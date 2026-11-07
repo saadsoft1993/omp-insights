@@ -1,6 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import { useMemo, useState } from "react";
-import { getOverviewStats, getRecentRequests } from "../api";
+import { getAccountDashboardStats, getAccountFlowStats, getOverviewStats, getRecentRequests } from "../api";
 import { Legend, ShareBar, TimeChart } from "../charts";
 import {
 	formatCompact,
@@ -32,6 +32,7 @@ import {
 	Table,
 	TableSkeleton,
 } from "../ui";
+import { AccountFlowChart, flowProviders, RoutingLine, useAccountPalette } from "./AccountRouting";
 
 export interface OverviewRouteProps {
 	active: boolean;
@@ -64,6 +65,13 @@ const TOKEN_MIX = [
 export function OverviewRoute({ active, range, onRequestClick }: OverviewRouteProps) {
 	const overview = useQuery(["overview", range], ({ signal }) => getOverviewStats(range, signal), { enabled: active });
 	const recent = useQuery(["recent-requests"], ({ signal }) => getRecentRequests(12, signal), { enabled: active });
+	const accounts = useQuery(["accounts", range], ({ signal }) => getAccountDashboardStats(range, signal), {
+		enabled: active,
+	});
+	const accountFlow = useQuery(["account-flow", range], ({ signal }) => getAccountFlowStats(range, signal), {
+		enabled: active,
+	});
+	const palette = useAccountPalette(accounts.data, accountFlow.data);
 	const [metric, setMetric] = useState<ActivityMetric>("requests");
 	const meta = rangeMeta(range);
 
@@ -247,6 +255,51 @@ export function OverviewRoute({ active, range, onRequestClick }: OverviewRoutePr
 
 			<Card
 				index={3}
+				title="Accounts"
+				description="Measured split of the last 15 minutes, recent new sessions, and traffic per account"
+				actions={
+					<a className="btn" data-size="sm" data-variant="ghost" href={`#/accounts?range=${range}`}>
+						Accounts <ArrowRight size={13} />
+					</a>
+				}
+				stale={accounts.stale || accountFlow.stale}
+			>
+				<QueryView query={accounts} skeleton={<ChartSkeleton height={120} />}>
+					{({ routing }) => {
+						const flow = accountFlow.data;
+						const charted = flowProviders(flow);
+						if (routing.length === 0 && charted.length === 0) {
+							return <span className="dim">No traffic served by a stored account in this range.</span>;
+						}
+						return (
+							<div className="stack" style={{ gap: 14 }}>
+								{routing.map(r => (
+									<RoutingLine key={r.provider} routing={r} palette={palette} />
+								))}
+								{flow &&
+									charted.map(provider => (
+										<div key={provider} className="stack" style={{ gap: 6 }}>
+											<span className="section-label mono" style={{ marginBottom: 0 }}>
+												{provider}
+											</span>
+											<AccountFlowChart
+												flow={flow}
+												provider={provider}
+												range={range}
+												metric="requests"
+												palette={palette}
+												height={96}
+											/>
+										</div>
+									))}
+							</div>
+						);
+					}}
+				</QueryView>
+			</Card>
+
+			<Card
+				index={4}
 				title={
 					<>
 						<Dot tone="live" pulse /> Latest requests

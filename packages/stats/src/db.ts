@@ -125,6 +125,10 @@ const COST_UNPRICED_BACKFILL_KEY = "messages_cost_unpriced_v1";
 // Rows predating the `cost_no_cache_input` column are NULL; ingest always
 // writes a value, so one pass settles the column for good.
 const NO_CACHE_INPUT_BACKFILL_KEY = "cost_no_cache_input_v1";
+// Sessions record the credential row that served each assistant turn; rows
+// ingested before `messages.credential_id` existed are NULL until one full
+// re-parse writes it back through the UPSERT in `insertMessageStats`.
+const CREDENTIAL_ID_BACKFILL_KEY = "messages_credential_id_v1";
 // Zero-cost rows are repriced from the bundled catalog once per release (the
 // value stored is the version that ran it), since only a catalog update can
 // price a model it could not price before.
@@ -214,6 +218,7 @@ export async function initDb(): Promise<Database> {
 			cost_unpriced INTEGER NOT NULL DEFAULT 0,
 			agent_type TEXT NOT NULL DEFAULT 'main',
 			service_tier TEXT,
+			credential_id INTEGER,
 			UNIQUE(session_file, entry_id)
 		);
 
@@ -442,6 +447,11 @@ export async function initDb(): Promise<Database> {
 	if (!messageColumns.some(column => column.name === "cost_unpriced")) {
 		db.run("ALTER TABLE messages ADD COLUMN cost_unpriced INTEGER NOT NULL DEFAULT 0");
 	}
+	// Rows ingested before this column existed are unattributed until the
+	// `messages_credential_id_v1` re-parse fills them from the session files.
+	if (!messageColumns.some(column => column.name === "credential_id")) {
+		db.run("ALTER TABLE messages ADD COLUMN credential_id INTEGER");
+	}
 	// Token-usage-by-agent: each message is classified main / subagent / advisor
 	// from its transcript path. A brand-new table gets the column from CREATE
 	// TABLE and the parser labels rows at insert time; a pre-existing table gets
@@ -529,6 +539,7 @@ export async function initDb(): Promise<Database> {
 	backfillToolCalls(db);
 	backfillReingestCosts(db);
 	backfillUnpricedCosts(db);
+	backfillCredentialIds(db);
 	repairUserMessageLinks(db);
 	backfillPriorityPremiumRequests(db);
 	backfillAgentType(db);
@@ -1166,6 +1177,7 @@ export function insertMessageStats(stats: Iterable<MessageStatsInput>): number {
 			"cost_unpriced",
 			"agent_type",
 			"service_tier",
+			"credential_id",
 		],
 		identity: ["entry_id", "timestamp"],
 		upsert: `ON CONFLICT(session_file, entry_id) DO UPDATE SET
@@ -1177,7 +1189,8 @@ export function insertMessageStats(stats: Iterable<MessageStatsInput>): number {
 			cost_total = excluded.cost_total,
 			cost_no_cache_input = excluded.cost_no_cache_input,
 			cost_unpriced = excluded.cost_unpriced,
-			service_tier = excluded.service_tier`,
+			service_tier = excluded.service_tier,
+			credential_id = excluded.credential_id`,
 	});
 	return atomically(db, () => {
 		for (const s of stats) {
@@ -1213,6 +1226,7 @@ export function insertMessageStats(stats: Iterable<MessageStatsInput>): number {
 					unpriced ? 1 : 0,
 					s.agentType,
 					s.serviceTier ?? null,
+					s.credentialId ?? null,
 				],
 			);
 		}
@@ -1271,6 +1285,7 @@ function rowToMessageStats(row: any): MessageStats {
 		},
 		agentType: (row.agent_type as AgentType) ?? "main",
 		serviceTier: (row.service_tier as ServiceTier | null) ?? null,
+		credentialId: row.credential_id ?? null,
 		costUnpriced: row.cost_unpriced === 1,
 	};
 }
@@ -1305,6 +1320,66 @@ export function getMessageById(id: number): MessageStats | null {
 	const row = stmt.get(id);
 	return row ? rowToMessageStats(row) : null;
 }
+
+/** Attributed requests of one (provider, credential) pair in a short raw window. */
+export interface CredentialRequestCount {
+	provider: string;
+	credentialId: number;
+	requests: number;
+}
+
+/**
+ * Attributed requests per (provider, credential) at or after `since`. Read
+ * from the raw table: callers ask for minutes, which the timestamp index
+ * serves directly and the hourly rollups cannot resolve.
+ */
+export function getCredentialRequestsSince(since: number): CredentialRequestCount[] {
+	if (!db) return [];
+	return db
+		.query<CredentialRequestCount, [number]>(
+			`SELECT provider, credential_id AS credentialId, COUNT(*) AS requests
+			 FROM messages WHERE timestamp >= ? AND credential_id IS NOT NULL
+			 GROUP BY provider, credential_id`,
+		)
+		.all(since);
+}
+
+/** The first attributed request of one root session transcript on one provider. */
+export interface SessionStart {
+	sessionFile: string;
+	provider: string;
+	credentialId: number;
+	/** Epoch ms of that first request. */
+	at: number;
+}
+
+/**
+ * The first attributed request of every (root transcript, provider) pair
+ * whose first attributed request is at or after `since`, oldest first: which
+ * account was observed serving each new main session first. A rotation can
+ * move a session to another credential afterwards, so this records where
+ * sessions started, not where they run now. Only main-agent transcripts
+ * count: subagent and advisor transcripts follow their parent session's
+ * credential.
+ */
+export function getSessionStarts(since: number): SessionStart[] {
+	if (!db) return [];
+	// SQLite fills bare columns of a MIN() aggregate from the row holding the minimum.
+	return db
+		.query<SessionStart, [number]>(
+			`SELECT session_file AS sessionFile, provider, credential_id AS credentialId, MIN(timestamp) AS at
+			 FROM messages
+			 WHERE credential_id IS NOT NULL AND agent_type = 'main' AND session_file IN (
+			   SELECT session_file FROM messages
+			   WHERE timestamp >= ?1 AND credential_id IS NOT NULL AND agent_type = 'main'
+			 )
+			 GROUP BY session_file, provider
+			 HAVING MIN(timestamp) >= ?1
+			 ORDER BY at, session_file`,
+		)
+		.all(since);
+}
+
 /**
  * Per-local-day activity aggregates for the last `days` days, oldest first.
  * Self-initializing (opens the stats DB on first use) so the coding-agent TUI
@@ -1466,6 +1541,25 @@ function backfillUnpricedCosts(database: Database): void {
 }
 
 /**
+ * One-shot `file_offsets` wipe so the next sync re-parses every session and
+ * writes `credential_id` onto rows ingested before the column existed. The
+ * UPSERT in {@link insertMessageStats} overwrites it in place, so per-account
+ * attribution covers history instead of starting at the upgrade. Same
+ * sentinel protocol as {@link backfillReingestCosts}.
+ */
+function backfillCredentialIds(database: Database): void {
+	const row = database.query("SELECT value FROM meta WHERE key = ?").get(CREDENTIAL_ID_BACKFILL_KEY) as
+		| { value: string }
+		| undefined;
+	if (!shouldResetBackfill(row?.value)) return;
+
+	database.run("DELETE FROM file_offsets");
+	database
+		.query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")
+		.run(CREDENTIAL_ID_BACKFILL_KEY, BACKFILL_PENDING);
+}
+
+/**
  * Reclassify pre-existing `messages` rows by agent type once, after the
  * `agent_type` column is added to an older database (every prior row defaulted
  * to 'main' on the ALTER). Classification is purely path-based — derived from
@@ -1592,6 +1686,7 @@ export function markSessionBackfillsComplete(): void {
 			PRIORITY_PREMIUM_REQUESTS_BACKFILL_KEY,
 			COST_REINGEST_BACKFILL_KEY,
 			COST_UNPRICED_BACKFILL_KEY,
+			CREDENTIAL_ID_BACKFILL_KEY,
 		]) {
 			markComplete.run(key, BACKFILL_COMPLETE);
 		}

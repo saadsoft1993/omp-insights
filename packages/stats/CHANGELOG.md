@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added an Accounts page (`g a`) and `GET /api/stats/accounts`: requests, tokens and cost per stored credential, merged per account (same provider, email and organization, including a second login slot such as `anthropic-2` whose account id resolves to the same email and organization), with active/idle/blocked/needs-login status, share of the provider's traffic and the latest quota readings. Each provider's total for the range, the same number the Providers page shows, is split into requests on accounts and requests not tied to an account (background calls such as titles, memory and judges, API keys, gateways). Already-ingested sessions are re-read once on the next sync to attribute history.
+- Added a traffic split to the Accounts page and an Accounts card on Overview: per provider, the measured share of each account's requests over the last 15 minutes, which account served the first request of recent new main sessions and when that last changed in range (historical observations; sessions can be rotated afterwards), plus a stacked traffic-by-account chart backed by `GET /api/stats/accounts/flow`.
+
 ## [18.17.0] - 2026-11-06
 
 ### Fixed

@@ -4,6 +4,8 @@ import * as path from "node:path";
 import { isEnoent, logger } from "@oh-my-pi/pi-utils";
 import { $, type Server } from "bun";
 import {
+	getAccountDashboardStats,
+	getAccountFlowStats,
 	getCostDashboardStats,
 	getDashboardStats,
 	getFolderStats,
@@ -270,6 +272,16 @@ export async function handleApi(req: Request): Promise<Response> {
 
 	if (path === "/api/stats/providers") {
 		const stats = await getProviderDashboardStats(range);
+		return Response.json(stats);
+	}
+
+	if (path === "/api/stats/accounts") {
+		const stats = await getAccountDashboardStats(range);
+		return Response.json(stats);
+	}
+
+	if (path === "/api/stats/accounts/flow") {
+		const stats = await getAccountFlowStats(range);
 		return Response.json(stats);
 	}
 

@@ -1,0 +1,52 @@
+.accounts-quotas {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 12px 16px 14px;
+	background: var(--bg);
+	border-top: 1px solid var(--line-1);
+}
+
+.accounts-quota {
+	display: grid;
+	grid-template-columns: minmax(160px, 1fr) 180px minmax(120px, auto) minmax(120px, auto);
+	align-items: center;
+	gap: 16px;
+}
+
+.account-routing {
+	display: grid;
+	grid-template-columns: 120px minmax(0, 1fr);
+	align-items: baseline;
+	gap: 12px;
+}
+
+.account-routing-body {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 18px;
+}
+
+.account-routing-part,
+.account-routing-share {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+
+.account-reconcile {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 6px;
+}
+
+.account-reconcile-header {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--line-1);
+}

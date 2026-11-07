@@ -4,6 +4,7 @@ import { Shell } from "./app/Shell";
 import { LiveProvider } from "./data/live";
 import { useHashRoute } from "./data/useHashRoute";
 import {
+	AccountsRoute,
 	CostsRoute,
 	ErrorsRoute,
 	FrustrationRoute,
@@ -53,6 +54,8 @@ function Dashboard() {
 				return <ModelsRoute active={active} range={range} />;
 			case "providers":
 				return <ProvidersRoute active={active} range={range} />;
+			case "accounts":
+				return <AccountsRoute active={active} range={range} />;
 			case "costs":
 				return <CostsRoute active={active} range={range} />;
 			case "tools":

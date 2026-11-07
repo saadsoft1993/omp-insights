@@ -1,4 +1,6 @@
 import type {
+	AccountDashboardStats,
+	AccountFlowStats,
 	CostDashboardStats,
 	FolderStats,
 	FrustrationDashboardStats,
@@ -230,6 +232,16 @@ export async function getProviderWindowStats(
 	const params = new URLSearchParams({ range });
 	if (provider !== null) params.set("provider", provider);
 	return fetchJson<ProviderWindowStats>(`${API_BASE}/stats/provider-windows?${params}`, { signal });
+}
+
+/** Per-account traffic, status and quota readings, plus unattributed traffic per provider. */
+export async function getAccountDashboardStats(range: TimeRange, signal?: AbortSignal): Promise<AccountDashboardStats> {
+	return fetchJson<AccountDashboardStats>(`${API_BASE}/stats/accounts?range=${encodeURIComponent(range)}`, { signal });
+}
+
+/** Requests and tokens per account per bucket over the range (unattributed traffic as its own series per provider). */
+export async function getAccountFlowStats(range: TimeRange, signal?: AbortSignal): Promise<AccountFlowStats> {
+	return fetchJson<AccountFlowStats>(`${API_BASE}/stats/accounts/flow?range=${encodeURIComponent(range)}`, { signal });
 }
 
 export async function getSessions(limit = 100, q?: string, signal?: AbortSignal): Promise<SessionSummary[]> {

@@ -11,6 +11,7 @@ import {
 	ScanSearch,
 	Sparkles,
 	SquareChartGantt,
+	UserRound,
 	Wrench,
 } from "lucide-react";
 
@@ -18,6 +19,7 @@ export type DashboardSection =
 	| "overview"
 	| "models"
 	| "providers"
+	| "accounts"
 	| "costs"
 	| "requests"
 	| "errors"
@@ -49,6 +51,7 @@ export const NAV: readonly NavGroup[] = [
 			{ id: "overview", label: "Overview", icon: LayoutGrid, hotkey: "o" },
 			{ id: "models", label: "Models", icon: Cpu, hotkey: "m" },
 			{ id: "providers", label: "Providers", icon: PlugZap, hotkey: "p" },
+			{ id: "accounts", label: "Accounts", icon: UserRound, hotkey: "a" },
 			{ id: "costs", label: "Costs", icon: Coins, hotkey: "c" },
 		],
 	},

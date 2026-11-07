@@ -53,7 +53,7 @@ const DAY_MS = 24 * HOUR_MS;
  * Bump when the rollup schema or fact definitions change: the tables are then
  * dropped and every hour is rebuilt from the raw tables.
  */
-const ROLLUP_VERSION = "2";
+const ROLLUP_VERSION = "3";
 const ROLLUP_VERSION_KEY = "rollup_version";
 /** Bump when the dirty-marking triggers change; they are then recreated in place. */
 const TRIGGER_VERSION = "4";
@@ -79,13 +79,14 @@ const REFRESH_MAX_BATCH = 64;
 // the raw read paths so both produce identical columns.
 // ---------------------------------------------------------------------------
 
-const MESSAGE_DIMENSIONS = "model, provider, folder, agent_type";
+const MESSAGE_DIMENSIONS = "model, provider, folder, agent_type, credential_id";
 
 /** Additive per-bucket facts over `messages` (columns qualified by `p`). */
 function messageFacts(bucketExpr: string, p: string): string {
 	return `
 		${bucketExpr} AS bucket,
 		${p}model AS model, ${p}provider AS provider, ${p}folder AS folder, ${p}agent_type AS agent_type,
+		${p}credential_id AS credential_id,
 		COUNT(*) AS requests,
 		SUM(CASE WHEN ${p}stop_reason = 'error' THEN 1 ELSE 0 END) AS failed,
 		SUM(${p}input_tokens) AS input_tokens,
@@ -226,6 +227,7 @@ export function ensureRollupSchema(database: Database): void {
 				provider TEXT NOT NULL,
 				folder TEXT NOT NULL,
 				agent_type TEXT NOT NULL,
+				credential_id INTEGER,
 				requests INTEGER NOT NULL,
 				failed INTEGER NOT NULL,
 				input_tokens INTEGER NOT NULL,
@@ -527,7 +529,7 @@ function messageSource(database: Database, cutoff: number | null, fine: boolean)
 			`SELECT ${messageFacts("d.bucket", "m.")}
 			 FROM rollup_dirty d JOIN messages m ON m.timestamp >= d.bucket AND m.timestamp < d.bucket + ${HOUR_MS}
 			 ${hi !== null ? "WHERE d.bucket >= ?" : ""}
-			 GROUP BY d.bucket, m.model, m.provider, m.folder, m.agent_type`,
+			 GROUP BY d.bucket, m.model, m.provider, m.folder, m.agent_type, m.credential_id`,
 		);
 		if (hi !== null) params.push(hi);
 	}
@@ -917,6 +919,81 @@ export function getProviderTimeSeries({ cutoff, bucketMs }: RangeWindow): Provid
 		cost: row.cost,
 		unpricedRequests: row.unpriced,
 		requests: row.requests,
+	}));
+}
+
+/** Request/token/cost totals of one (provider, credential) pair; `credentialId` null = no credential recorded. */
+export interface CredentialAggregate {
+	provider: string;
+	credentialId: number | null;
+	requests: number;
+	failedRequests: number;
+	/** Uncached input + cache reads + cache writes + output. */
+	totalTokens: number;
+	totalCost: number;
+	unpricedRequests: number;
+	lastUsed: number;
+}
+
+/** Totals per (provider, credential) since `cutoff` (all time when null). */
+export function getStatsByCredential(cutoff: number | null = null): CredentialAggregate[] {
+	return queryMessages<{
+		provider: string;
+		credential_id: number | null;
+		requests: number;
+		failed: number;
+		total_tokens: number;
+		cost_total: number;
+		unpriced: number;
+		last_ts: number;
+	}>(
+		{ cutoff },
+		`f.provider AS provider, f.credential_id AS credential_id, SUM(f.requests) AS requests, SUM(f.failed) AS failed,
+		 SUM(f.input_tokens + f.output_tokens + f.cache_read_tokens + f.cache_write_tokens) AS total_tokens,
+		 TOTAL(f.cost_total) AS cost_total, SUM(f.unpriced) AS unpriced, MAX(f.last_ts) AS last_ts`,
+		"GROUP BY f.provider, f.credential_id",
+	).map(row => ({
+		provider: row.provider,
+		credentialId: row.credential_id,
+		requests: row.requests,
+		failedRequests: row.failed,
+		totalTokens: row.total_tokens,
+		totalCost: row.cost_total,
+		unpricedRequests: row.unpriced,
+		lastUsed: row.last_ts,
+	}));
+}
+
+/** Requests and tokens of one (provider, credential) pair in one series bucket. */
+export interface CredentialTimeSeriesPoint {
+	timestamp: number;
+	provider: string;
+	credentialId: number | null;
+	requests: number;
+	/** Uncached input + cache reads + cache writes + output. */
+	totalTokens: number;
+}
+
+/** Requests/tokens per bucket per (provider, credential); bucketed like {@link getProviderTimeSeries}. */
+export function getCredentialTimeSeries({ cutoff, bucketMs }: RangeWindow): CredentialTimeSeriesPoint[] {
+	return queryMessages<{
+		bucket: number;
+		provider: string;
+		credential_id: number | null;
+		requests: number;
+		total_tokens: number;
+	}>(
+		{ cutoff, bucketMs },
+		`${seriesBucket(bucketMs)} AS bucket, f.provider AS provider, f.credential_id AS credential_id,
+		 SUM(f.requests) AS requests,
+		 SUM(f.input_tokens + f.output_tokens + f.cache_read_tokens + f.cache_write_tokens) AS total_tokens`,
+		"GROUP BY 1, f.provider, f.credential_id ORDER BY 1",
+	).map(row => ({
+		timestamp: row.bucket,
+		provider: row.provider,
+		credentialId: row.credential_id,
+		requests: row.requests,
+		totalTokens: row.total_tokens,
 	}));
 }
 

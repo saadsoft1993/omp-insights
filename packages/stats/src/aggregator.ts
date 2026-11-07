@@ -2,15 +2,18 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getAgentDbPath, getStatsDbPath, workerHostEntry } from "@oh-my-pi/pi-utils";
 import { withFileLock } from "@oh-my-pi/pi-utils/file-lock";
+import { buildAccountFlow, buildAccountStats, RECENT_WINDOW_MS, readAgentAccountData, routingSince } from "./accounts";
 import {
 	applySessionParseResults,
 	completeSessionSync,
 	getRecentErrors as dbGetRecentErrors,
 	getRecentRequests as dbGetRecentRequests,
 	type FileOffset,
+	getCredentialRequestsSince,
 	getFileOffsets,
 	getMessageById,
 	getMessageCount,
+	getSessionStarts,
 	initDb,
 	markSessionBackfillsComplete,
 	type ParsedSession,
@@ -26,12 +29,14 @@ import {
 } from "./parser";
 import {
 	getCostTimeSeries,
+	getCredentialTimeSeries,
 	getModelPerformanceSeries,
 	getModelTimeSeries,
 	getOverallStats,
 	getProviderHourlyBurn,
 	getProviderTimeSeries,
 	getStatsByAgentType,
+	getStatsByCredential,
 	getStatsByFolder,
 	getStatsByModel,
 	getStatsByProvider,
@@ -48,6 +53,8 @@ import type { SyncWorkerRequest, SyncWorkerResponse } from "./sync-worker";
 // JavaScript entry. Standalone source `omp-stats` keeps using this package's
 // own sync-worker source file.
 import type {
+	AccountDashboardStats,
+	AccountFlowStats,
 	DashboardStats,
 	FolderStats,
 	MessageStats,
@@ -631,6 +638,33 @@ export async function getProviderDashboardStats(range?: string | null): Promise<
 		hourly: getProviderHourlyBurn(window.cutoff),
 		series: getProviderTimeSeries(window),
 	};
+}
+
+/**
+ * Get the accounts dashboard payload: traffic per stored credential, merged
+ * into accounts by identity, with status, blocks and latest quota readings
+ * from the agent DB, the traffic no credential is recorded for, and where
+ * each provider routes traffic right now.
+ */
+export async function getAccountDashboardStats(range?: string | null): Promise<AccountDashboardStats> {
+	await initDb();
+	const nowMs = Date.now();
+	const { cutoff } = getTimeRangeConfig(range);
+	return buildAccountStats({
+		inRange: getStatsByCredential(cutoff),
+		allTime: getStatsByCredential(null),
+		recent: getCredentialRequestsSince(nowMs - RECENT_WINDOW_MS),
+		sessionStarts: getSessionStarts(routingSince(cutoff, nowMs)),
+		rangeCutoff: cutoff,
+		agent: readAgentAccountData(nowMs),
+		nowMs,
+	});
+}
+
+/** Requests and tokens per account per bucket over the range, bucketed like the provider time series. */
+export async function getAccountFlowStats(range?: string | null): Promise<AccountFlowStats> {
+	await initDb();
+	return buildAccountFlow(getCredentialTimeSeries(getTimeRangeConfig(range)), readAgentAccountData(Date.now()));
 }
 
 const USAGE_CACHE_TTL_MS = 60_000;

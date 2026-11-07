@@ -980,6 +980,209 @@ export interface ProviderWindowStats {
 	windowInsights: ProviderWindowInsight[];
 	usageSeries: UsageWindowSeries[];
 }
+
+/**
+ * Account state, by precedence: `needs_login` (every stored credential of the
+ * account is disabled), `blocked` (an enabled credential sits behind an active
+ * rate-limit block), `active` (a request in the last 24 hours, whatever the
+ * selected range), `idle` (requests, none in the last 24 hours), `never` (no
+ * request recorded).
+ */
+export type AccountStatus = "needs_login" | "blocked" | "active" | "idle" | "never";
+
+/** Active rate-limit block on one of an account's credentials. */
+export interface AccountBlock {
+	/** Block scope as stored (e.g. `tier:fable`); empty = every model. */
+	scope: string;
+	/** Epoch ms the block lifts. */
+	until: number;
+}
+
+/** Latest recorded usage-limit reading for one quota window of an account. */
+export interface AccountQuotaWindow {
+	limitId: string;
+	label: string;
+	windowLabel: string | null;
+	/** Used fraction 0..1 (>1 = overage) when the provider reported one. */
+	usedFraction: number | null;
+	status: string | null;
+	/** Epoch ms the window resets, when reported. */
+	resetsAt: number | null;
+	/** Epoch ms the reading was fetched. */
+	recordedAt: number;
+}
+
+/**
+ * One provider account: every stored credential sharing a provider and an
+ * identity (same email and organization) merged into one row.
+ */
+export interface AccountStats {
+	/** Stable row key: provider plus identity. */
+	key: string;
+	provider: string;
+	/** Email when known, else the stored identity key, else the credential id. */
+	label: string;
+	email: string | null;
+	orgId: string | null;
+	/** `oauth` or `api_key`; null for a credential id missing from the agent database. */
+	credentialType: string | null;
+	/** `auth_credentials` row ids merged into this account. */
+	credentialIds: number[];
+	status: AccountStatus;
+	/** Why the newest disabled credential was disabled, when the account needs a login. */
+	disabledCause: string | null;
+	blocks: AccountBlock[];
+	/** Requests served in the selected range. */
+	requests: number;
+	failedRequests: number;
+	/** Uncached input + cache reads + cache writes + output, in range. */
+	totalTokens: number;
+	totalCost: number;
+	/** Requests excluded from cost because no public-equivalent price exists. */
+	unpricedRequests: number;
+	/** Epoch ms of the newest request ever served, regardless of range. */
+	lastUsed: number | null;
+	/** Share of the provider's attributed requests in range (0..1). */
+	requestShare: number;
+	/** Share of the provider's attributed tokens in range (0..1). */
+	tokenShare: number;
+	/** Latest reading per quota window, newest-recorded first. */
+	quotas: AccountQuotaWindow[];
+	/** Requests served in the last {@link ProviderRouting.recent} window, regardless of range. */
+	recentRequests: number;
+	/** Share of the provider's attributed requests in that window (0..1). */
+	recentShare: number;
+	/** Served at least one request in that window. */
+	servingNow: boolean;
+	/** Served the first request of the provider's most recent new main session in the new-session window (see {@link ProviderRouting.newSessions}). */
+	servedLatestNewSession: boolean;
+}
+
+/**
+ * Traffic of one provider that no stored credential can be credited with:
+ * environment API keys, gateways, background `model_usage` calls, and
+ * sessions written before turns recorded their credential.
+ */
+export interface UnattributedUsage {
+	provider: string;
+	requests: number;
+	failedRequests: number;
+	totalTokens: number;
+	totalCost: number;
+	unpricedRequests: number;
+	/** Epoch ms of the newest unattributed request in range. */
+	lastUsed: number | null;
+}
+
+/** One account's slice of a provider's recent attributed requests. */
+export interface RoutingRequestShare {
+	accountKey: string;
+	requests: number;
+	/** Share of the provider's attributed requests in the window (0..1). */
+	share: number;
+}
+
+/** New main sessions whose first request one account served. */
+export interface RoutingSessionCount {
+	accountKey: string;
+	sessions: number;
+}
+
+/**
+ * Latest observed change in which account served new main sessions' first
+ * request, within the range. Historical observation; not the balancer's
+ * current choice.
+ */
+export interface AssignmentChange {
+	fromAccountKey: string;
+	toAccountKey: string;
+	/** Epoch ms of the first request of the first new session observed on `toAccountKey`. */
+	at: number;
+}
+
+/**
+ * Routing observations for one provider. The trailing request split is the
+ * only measurement of current routing: omp keeps a session on one credential
+ * but can rotate it to another at any time, so where traffic goes now is only
+ * visible in recent requests. New-session assignments record which account
+ * served the first request of recent main sessions; rotations can move those
+ * sessions afterwards, so they are historical observations, not the balancer's
+ * current choice.
+ */
+export interface ProviderRouting {
+	provider: string;
+	/** Attributed requests in the trailing window, per account, busiest first. */
+	recent: { windowMs: number; requests: number; accounts: RoutingRequestShare[] };
+	/**
+	 * New main sessions (main-agent transcripts; subagents follow their parent's
+	 * credential) whose first attributed request falls in the trailing window,
+	 * counted per account observed serving that first request. `lastAccount` is
+	 * that account for the most recent one; `lastAccountSince` is the first
+	 * request of the uninterrupted run of new sessions first served there (at
+	 * the earliest, the start of the range or of the window, whichever is
+	 * earlier). `latest` is the most recent new session in that same span,
+	 * inside the window or not. Rotations can move any of these sessions to
+	 * another account after its first request.
+	 */
+	newSessions: {
+		windowMs: number;
+		sessions: number;
+		accounts: RoutingSessionCount[];
+		lastAccount: string | null;
+		lastAccountSince: number | null;
+		latest: { accountKey: string; at: number } | null;
+	};
+	/** Latest observed change in which account served new main sessions' first request, within the range. Historical observation; not the balancer's current choice. */
+	lastAssignmentChange: AssignmentChange | null;
+}
+
+/**
+ * One provider's requests in range, split into those tied to a stored account
+ * and those that are not. Counted by the request's own provider from the same
+ * rollups as the Providers page, so `requests` equals that page's total and
+ * `accountRequests + unattributedRequests === requests`.
+ */
+export interface ProviderAccountTotals {
+	provider: string;
+	requests: number;
+	accountRequests: number;
+	unattributedRequests: number;
+}
+
+/** Accounts dashboard payload (`GET /api/stats/accounts`). */
+export interface AccountDashboardStats {
+	accounts: AccountStats[];
+	unattributed: UnattributedUsage[];
+	/** Every provider with requests in range, busiest first. */
+	providerTotals: ProviderAccountTotals[];
+	/** Per provider with attributed traffic in the routing windows or an assignment change in range. */
+	routing: ProviderRouting[];
+}
+
+/** One stacked series of the account traffic chart. */
+export interface AccountFlowSeries {
+	key: string;
+	provider: string;
+	label: string;
+	/** The {@link AccountStats.key} the series belongs to; null for the provider's unattributed traffic. */
+	accountKey: string | null;
+}
+
+/** One series' traffic in one bucket. */
+export interface AccountFlowPoint {
+	timestamp: number;
+	key: string;
+	requests: number;
+	/** Uncached input + cache reads + cache writes + output. */
+	tokens: number;
+}
+
+/** Account traffic over time (`GET /api/stats/accounts/flow`), bucketed like the provider time series. */
+export interface AccountFlowStats {
+	series: AccountFlowSeries[];
+	points: AccountFlowPoint[];
+}
+
 /**
  * One row of the Traces session list: a root session with every child
  * transcript (task subagents, advisors) folded in.

@@ -295,6 +295,9 @@ function extractStats(
 					premiumRequests: derived,
 				};
 
+	// Persisted payloads are outside-controlled: anything but a positive integer row id reads as unattributed.
+	const credentialId = msg.credentialId;
+
 	return {
 		sessionFile,
 		entryId: entry.id,
@@ -312,6 +315,10 @@ function extractStats(
 		usage,
 		agentType,
 		serviceTier: servedTier ?? null,
+		credentialId:
+			typeof credentialId === "number" && Number.isSafeInteger(credentialId) && credentialId > 0
+				? credentialId
+				: null,
 	};
 }
 

@@ -51,6 +51,13 @@ export interface MessageStats {
 	 * `MessageStats` too.
 	 */
 	costUnpriced?: boolean;
+	/**
+	 * `auth_credentials.id` of the stored credential that served this turn, or
+	 * `null` when the session recorded none (API keys from the environment,
+	 * gateway providers, background `model_usage` calls, sessions written before
+	 * the field existed). Optional for the same reason as {@link serviceTier}.
+	 */
+	credentialId?: number | null;
 }
 
 /**

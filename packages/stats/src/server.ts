@@ -41,6 +41,7 @@ import {
 	STATS_DASHBOARD_HOSTNAME_HEADER,
 	STATS_DASHBOARD_SECURITY_VERSION,
 } from "./port-conflict";
+import { createProxyGate, type ProxyGate, STATS_PROXY_PROOF_HEADER } from "./proxy-gate";
 import { getStatsByModel, getTimeSeries } from "./rollup";
 import { getSpotlightDashboardStats, getSpotlightSessionContext } from "./spotlight-aggregator";
 import {
@@ -452,7 +453,7 @@ export function formatStatsDashboardUrl(hostname: string, port: number): string 
 	return `http://${urlHostname}:${port}`;
 }
 
-function createDashboardServer(port: number, hostname: string): Server<undefined> {
+function createDashboardServer(port: number, hostname: string, gate?: ProxyGate): Server<undefined> {
 	const server = Bun.serve({
 		port,
 		hostname,
@@ -466,6 +467,17 @@ function createDashboardServer(port: number, hostname: string): Server<undefined
 				[STATS_DASHBOARD_HEADER]: STATS_DASHBOARD_SECURITY_VERSION,
 				[STATS_DASHBOARD_HOSTNAME_HEADER]: hostname,
 			};
+
+			if (gate) {
+				const proof = gate.check(req, server.port ?? port);
+				if (proof === null) return Response.json({ error: "forbidden" }, { status: 403 });
+				// Every answer, the event stream and errors included, proves to the proxy that it came from here.
+				dashboardHeaders[STATS_PROXY_PROOF_HEADER] = proof;
+				// Behind the proxy nothing may stop the dashboard from its page.
+				if (path === "/api/close") {
+					return Response.json({ error: "not found" }, { status: 404, headers: dashboardHeaders });
+				}
+			}
 
 			if (req.method === "OPTIONS") {
 				return new Response(null, { headers: dashboardHeaders });
@@ -578,6 +590,11 @@ let liveServers = 0;
 export interface StartServerOptions {
 	/** Host judge for the Frustration dashboard's judge runs; replaces any previously registered one. */
 	judge?: StatsJudgeProvider;
+	/**
+	 * Serve only a local reverse proxy holding the key in this file (see `proxy-gate.ts`). The dashboard then
+	 * binds exactly `port` or fails: it never reuses, replaces or falls back, since the proxy points at that port.
+	 */
+	proxyKeyFile?: string;
 }
 
 /**
@@ -618,6 +635,10 @@ export async function startServer(
 		for (const key of keys) activeServers.set(key, handle);
 		return handle;
 	};
+
+	if (options.proxyKeyFile) {
+		return register(createDashboardServer(port, hostname, createProxyGate(options.proxyKeyFile)));
+	}
 
 	let claim = await prepareStatsPort(port, hostname);
 	if (claim === "bind") {

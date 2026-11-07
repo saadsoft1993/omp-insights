@@ -1,10 +1,13 @@
 import { useCallback, useRef, useState } from "react";
 import type { DashboardSection } from "./app/nav";
+import { PairScreen } from "./app/PairScreen";
 import { Shell } from "./app/Shell";
 import { LiveProvider } from "./data/live";
+import { useUnpaired } from "./data/pairing";
 import { useHashRoute } from "./data/useHashRoute";
 import {
 	AccountsRoute,
+	AlertsRoute,
 	CostsRoute,
 	ErrorsRoute,
 	FrustrationRoute,
@@ -14,7 +17,9 @@ import {
 	OverviewRoute,
 	ProjectsRoute,
 	ProvidersRoute,
+	RelayRoute,
 	RequestsRoute,
+	SessionsRoute,
 	SpotlightRoute,
 	ToolsRoute,
 	TracesRoute,
@@ -22,6 +27,8 @@ import {
 import { RequestDrawer } from "./ui/RequestDrawer";
 
 export default function App() {
+	// The hub in front answers 401 until this browser is paired; the event stream closes with the dashboard.
+	if (useUnpaired()) return <PairScreen />;
 	return (
 		<LiveProvider>
 			<Dashboard />
@@ -43,6 +50,12 @@ function Dashboard() {
 	const render = (target: DashboardSection) => {
 		const active = target === section;
 		switch (target) {
+			case "sessions":
+				return <SessionsRoute active={active} />;
+			case "relay":
+				return <RelayRoute active={active} />;
+			case "alerts":
+				return <AlertsRoute active={active} />;
 			case "overview":
 				return <OverviewRoute active={active} range={range} onRequestClick={setSelectedRequestId} />;
 			case "requests":

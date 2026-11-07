@@ -1,5 +1,6 @@
 import {
 	Activity,
+	BellRing,
 	CircleAlert,
 	Coins,
 	Cpu,
@@ -12,11 +13,16 @@ import {
 	ScanSearch,
 	Sparkles,
 	SquareChartGantt,
+	SquareTerminal,
 	UserRound,
+	Waypoints,
 	Wrench,
 } from "lucide-react";
 
 export type DashboardSection =
+	| "sessions"
+	| "relay"
+	| "alerts"
 	| "overview"
 	| "models"
 	| "providers"
@@ -47,6 +53,15 @@ export interface NavGroup {
 
 /** Sidebar structure; the order here is the order on screen. */
 export const NAV: readonly NavGroup[] = [
+	{
+		// Served by the omp hub that fronts this dashboard (`/api/hub/*`).
+		heading: "Control",
+		items: [
+			{ id: "sessions", label: "Sessions", icon: SquareTerminal, hotkey: "n" },
+			{ id: "relay", label: "Relay", icon: Waypoints, hotkey: "y" },
+			{ id: "alerts", label: "Alerts", icon: BellRing, hotkey: "b" },
+		],
+	},
 	{
 		heading: "Usage",
 		items: [

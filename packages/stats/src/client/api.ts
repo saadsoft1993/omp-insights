@@ -1,3 +1,4 @@
+import { markUnpaired } from "./data/pairing";
 import type {
 	AccountDashboardStats,
 	AccountFlowStats,
@@ -73,6 +74,8 @@ async function fetchJson<T>(endpoint: string, options?: RequestInit, previous?: 
 	const res = await fetch(endpoint, init);
 	if (res.status === 304 && etag) return previous as T;
 	if (!res.ok) {
+		// The hub fronting this dashboard answers 401 until the browser is paired.
+		if (res.status === 401) markUnpaired();
 		throw new ApiError(res.status, endpoint, await readErrorMessage(res, endpoint));
 	}
 	const data = (await res.json()) as T;
@@ -140,9 +143,12 @@ export async function closeDashboard(): Promise<void> {
 	if (!res.ok) throw new ApiError(res.status, endpoint, await readErrorMessage(res, endpoint));
 }
 
-/** Ask the server to start a background sync; progress arrives on the `/api/events` stream. */
+/**
+ * Ask the server to start a background sync; progress arrives on the `/api/events` stream. Like the
+ * spend-incurring actions it carries the custom header, so the hub in front can refuse cross-site posts.
+ */
 export async function requestSync(): Promise<LiveStatus> {
-	return fetchJson<LiveStatus>(`${API_BASE}/sync`, { method: "POST" });
+	return fetchJson<LiveStatus>(`${API_BASE}/sync`, { method: "POST", headers: ACTION_HEADERS });
 }
 
 export async function getFrustrationDashboardStats(

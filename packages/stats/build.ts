@@ -20,24 +20,28 @@ if (!result.success) {
 	process.exit(1);
 }
 
-// The inline script applies the persisted theme before first paint (no flash).
+// theme.js applies the persisted theme before first paint (no flash). It is a file, not an inline
+// script, so the page works under a strict Content-Security-Policy (script-src 'self').
+const themeJs = `(function () {
+  try {
+    var stored = localStorage.getItem("omp-stats-theme");
+    var system = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    var theme = stored === "light" || stored === "dark" ? stored : system;
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+  } catch (e) {}
+})();
+`;
+
 const indexHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>omp stats</title>
-    <script>
-      (function () {
-        try {
-          var stored = localStorage.getItem("omp-stats-theme");
-          var system = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-          var theme = stored === "light" || stored === "dark" ? stored : system;
-          document.documentElement.dataset.theme = theme;
-          document.documentElement.style.colorScheme = theme;
-        } catch (e) {}
-      })();
-    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="omp">
+    <title>omp</title>
+    <script src="theme.js"></script>
     <link rel="stylesheet" href="index.css">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>
@@ -50,6 +54,7 @@ const indexHtml = `<!DOCTYPE html>
 // Static asset the bundler never emits; copied beside index.css so the on-disk client and the embedded archive both serve it.
 await fs.copyFile("./src/client/favicon.ico", "./dist/client/favicon.ico");
 
+await Bun.write("./dist/client/theme.js", themeJs);
 await Bun.write("./dist/client/index.html", indexHtml);
 
 console.log("Build complete");

@@ -1,4 +1,5 @@
 export * from "./AccountsRoute";
+export * from "./AlertsRoute";
 export * from "./CostsRoute";
 export * from "./ErrorsRoute";
 export * from "./FrustrationRoute";
@@ -8,7 +9,9 @@ export * from "./ModelsRoute";
 export * from "./OverviewRoute";
 export * from "./ProjectsRoute";
 export * from "./ProvidersRoute";
+export * from "./RelayRoute";
 export * from "./RequestsRoute";
+export * from "./SessionsRoute";
 export * from "./SpotlightRoute";
 export * from "./ToolsRoute";
 export * from "./TracesRoute";

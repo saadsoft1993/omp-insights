@@ -6,6 +6,7 @@ import chalk from "@oh-my-pi/pi-utils/chalk";
 import { formatErrorRate } from "./client/data/formatters";
 import { getDashboardStats, getTotalMessageCount, syncAllSessions } from "./aggregator";
 import { closeDb } from "./db";
+import { STATS_PROXY_KEY_ENV } from "./proxy-gate";
 import { refreshRollups } from "./rollup";
 import { formatStatsDashboardUrl, startServer } from "./server";
 
@@ -154,6 +155,10 @@ Options:
   -s, --sync         Sync session files and show summary
   -h, --help         Show this help message
 
+Environment:
+  ${STATS_PROXY_KEY_ENV}=<file>  Serve only a local proxy that signs each request with
+                                  this file's key (see src/proxy-gate.ts), Host 127.0.0.1:<port>
+
 Examples:
   omp-stats              # Start dashboard server
   omp-stats --json       # Print stats as JSON
@@ -166,7 +171,8 @@ Examples:
 	try {
 		if (!values.json && !values.sync) {
 			// The dashboard ingests sessions in the background and streams progress to the page.
-			const { port: actualPort } = await startServer(values.port, values.host);
+			const proxyKeyFile = process.env[STATS_PROXY_KEY_ENV] || undefined;
+			const { port: actualPort } = await startServer(values.port, values.host, { proxyKeyFile });
 			console.log(`Dashboard available at: ${formatStatsDashboardUrl(values.host, actualPort)}`);
 			console.log("Press Ctrl+C to stop\n");
 			process.on("SIGINT", () => {

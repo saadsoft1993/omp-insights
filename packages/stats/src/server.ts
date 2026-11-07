@@ -6,6 +6,7 @@ import { $, type Server } from "bun";
 import {
 	getAccountDashboardStats,
 	getAccountFlowStats,
+	getLiveTrafficStats,
 	getCostDashboardStats,
 	getDashboardStats,
 	getFolderStats,
@@ -283,6 +284,12 @@ export async function handleApi(req: Request): Promise<Response> {
 	if (path === "/api/stats/accounts/flow") {
 		const stats = await getAccountFlowStats(range);
 		return Response.json(stats);
+	}
+
+	if (path === "/api/stats/live") {
+		// Pull in transcripts written since the last poll; this response shows what is ingested now, the next one the rest.
+		statsLive().syncRecentlyWritten();
+		return Response.json(await getLiveTrafficStats());
 	}
 
 	if (path === "/api/stats/recent") {

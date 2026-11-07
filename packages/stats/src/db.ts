@@ -23,6 +23,7 @@ import {
 	type SpotlightSessionRow,
 	type SpotlightShapeRow,
 } from "./spotlight-ingest";
+import { mergeActivity, type TranscriptActivityRow } from "./transcript-activity";
 import type {
 	AgentType,
 	DailyActivityPoint,
@@ -129,6 +130,15 @@ const NO_CACHE_INPUT_BACKFILL_KEY = "cost_no_cache_input_v1";
 // ingested before `messages.credential_id` existed are NULL until one full
 // re-parse writes it back through the UPSERT in `insertMessageStats`.
 const CREDENTIAL_ID_BACKFILL_KEY = "messages_credential_id_v1";
+// `model_usage` entries (titles, memory, judges and other housekeeping calls)
+// look like assistant turns once stored; `messages.usage_purpose` keeps their
+// purpose apart. Rows ingested before the column existed are NULL until one
+// full re-parse writes it back.
+const USAGE_PURPOSE_BACKFILL_KEY = "messages_usage_purpose_v1";
+// Per-transcript agent activity (last tool and intent, exit, turn state) for
+// the Live page's subagent rows; transcripts ingested before the table existed
+// get their row from one full re-parse.
+const TRANSCRIPT_ACTIVITY_BACKFILL_KEY = "transcript_activity_v1";
 // Zero-cost rows are repriced from the bundled catalog once per release (the
 // value stored is the version that ran it), since only a catalog update can
 // price a model it could not price before.
@@ -219,6 +229,7 @@ export async function initDb(): Promise<Database> {
 			agent_type TEXT NOT NULL DEFAULT 'main',
 			service_tier TEXT,
 			credential_id INTEGER,
+			usage_purpose TEXT,
 			UNIQUE(session_file, entry_id)
 		);
 
@@ -391,6 +402,20 @@ export async function initDb(): Promise<Database> {
 			edit TEXT NOT NULL,
 			PRIMARY KEY (session_file, tool_call_id)
 		) WITHOUT ROWID;
+
+		-- What each transcript last did, for the Live page's subagent rows. Never tool arguments.
+		CREATE TABLE IF NOT EXISTS transcript_activity (
+			session_file TEXT PRIMARY KEY,
+			parent TEXT,
+			last_at INTEGER,
+			tool_name TEXT,
+			tool_intent TEXT,
+			tool_at INTEGER,
+			exit_at INTEGER,
+			exit_reason TEXT,
+			yielded_at INTEGER
+		) WITHOUT ROWID;
+		CREATE INDEX IF NOT EXISTS idx_transcript_activity_last ON transcript_activity(last_at);
 	`);
 
 	const offsetColumns = db.query("PRAGMA table_info(file_offsets)").all() as { name: string }[];
@@ -451,6 +476,11 @@ export async function initDb(): Promise<Database> {
 	// `messages_credential_id_v1` re-parse fills them from the session files.
 	if (!messageColumns.some(column => column.name === "credential_id")) {
 		db.run("ALTER TABLE messages ADD COLUMN credential_id INTEGER");
+	}
+	// Rows ingested before this column existed read as assistant turns until the
+	// `messages_usage_purpose_v1` re-parse marks their housekeeping calls.
+	if (!messageColumns.some(column => column.name === "usage_purpose")) {
+		db.run("ALTER TABLE messages ADD COLUMN usage_purpose TEXT");
 	}
 	// Token-usage-by-agent: each message is classified main / subagent / advisor
 	// from its transcript path. A brand-new table gets the column from CREATE
@@ -540,6 +570,8 @@ export async function initDb(): Promise<Database> {
 	backfillReingestCosts(db);
 	backfillUnpricedCosts(db);
 	backfillCredentialIds(db);
+	backfillUsagePurposes(db);
+	backfillTranscriptActivity(db);
 	repairUserMessageLinks(db);
 	backfillPriorityPremiumRequests(db);
 	backfillAgentType(db);
@@ -1099,10 +1131,34 @@ export function applySessionParseResults(sessions: ParsedSession[]): {
 			updateSpotlightCallResults(parsedRows(writes, result => result.spotlight.callResults)) +
 			insertSpotlightRequests(parsedRows(writes, result => result.spotlight.requests)) +
 			upsertSpotlightNeeds(parsedRows(writes, result => result.spotlight.needs));
+		const readActivity = database.query<ActivityDbRow, [string]>(
+			`SELECT ${ACTIVITY_COLUMNS} FROM transcript_activity WHERE session_file = ?`,
+		);
+		const writeActivity = database.query(
+			`INSERT OR REPLACE INTO transcript_activity (session_file, parent, last_at, tool_name, tool_intent, tool_at,
+			   exit_at, exit_reason, yielded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		);
 		for (const { sessionFile, result } of sessions) {
-			if (result.parserState) {
-				setFileOffset(sessionFile, result.newOffset, result.parserState.mtimeMs, result.parserState);
-			}
+			if (!result.parserState) continue;
+			setFileOffset(sessionFile, result.newOffset, result.parserState.mtimeMs, result.parserState);
+			const activity = result.activity;
+			if (!activity) continue;
+			const fromStart = result.activityFromStart === true;
+			const said = activity.lastAt !== null || activity.tool || activity.exit || activity.yielded || activity.parent;
+			if (!fromStart && !said) continue;
+			const previousRow = fromStart ? null : readActivity.get(sessionFile);
+			const row = mergeActivity(sessionFile, previousRow ? fromActivityDbRow(previousRow) : null, activity);
+			writeActivity.run(
+				row.sessionFile,
+				row.parent,
+				row.lastAt,
+				row.toolName,
+				row.toolIntent,
+				row.toolAt,
+				row.exitAt,
+				row.exitReason,
+				row.yieldedAt,
+			);
 		}
 		if (reconcile) {
 			database.query("INSERT OR REPLACE INTO meta (key, value) VALUES ('session_reconciliation', 'pending')").run();
@@ -1178,6 +1234,7 @@ export function insertMessageStats(stats: Iterable<MessageStatsInput>): number {
 			"agent_type",
 			"service_tier",
 			"credential_id",
+			"usage_purpose",
 		],
 		identity: ["entry_id", "timestamp"],
 		upsert: `ON CONFLICT(session_file, entry_id) DO UPDATE SET
@@ -1190,7 +1247,8 @@ export function insertMessageStats(stats: Iterable<MessageStatsInput>): number {
 			cost_no_cache_input = excluded.cost_no_cache_input,
 			cost_unpriced = excluded.cost_unpriced,
 			service_tier = excluded.service_tier,
-			credential_id = excluded.credential_id`,
+			credential_id = excluded.credential_id,
+			usage_purpose = excluded.usage_purpose`,
 	});
 	return atomically(db, () => {
 		for (const s of stats) {
@@ -1227,6 +1285,7 @@ export function insertMessageStats(stats: Iterable<MessageStatsInput>): number {
 					s.agentType,
 					s.serviceTier ?? null,
 					s.credentialId ?? null,
+					s.usagePurpose ?? null,
 				],
 			);
 		}
@@ -1286,6 +1345,7 @@ function rowToMessageStats(row: any): MessageStats {
 		agentType: (row.agent_type as AgentType) ?? "main",
 		serviceTier: (row.service_tier as ServiceTier | null) ?? null,
 		credentialId: row.credential_id ?? null,
+		usagePurpose: row.usage_purpose ?? null,
 		costUnpriced: row.cost_unpriced === 1,
 	};
 }
@@ -1342,6 +1402,73 @@ export function getCredentialRequestsSince(since: number): CredentialRequestCoun
 			 GROUP BY provider, credential_id`,
 		)
 		.all(since);
+}
+
+/** One completed request, as the live traffic view needs it. */
+export interface LiveRequestRow {
+	sessionFile: string;
+	provider: string;
+	credentialId: number | null;
+	model: string;
+	/** Uncached input + cache reads + cache writes + output. */
+	tokens: number;
+	timestamp: number;
+	/** `model_usage` purpose for housekeeping calls; null for assistant turns. */
+	usagePurpose: string | null;
+}
+
+/** Every request completed at or after `since`, oldest first, read raw (callers ask for minutes). */
+export function getRequestsSince(since: number): LiveRequestRow[] {
+	if (!db) return [];
+	return db
+		.query<LiveRequestRow, [number]>(
+			`SELECT session_file AS sessionFile, provider, credential_id AS credentialId, model,
+			        input_tokens + output_tokens + cache_read_tokens + cache_write_tokens AS tokens, timestamp,
+			        usage_purpose AS usagePurpose
+			 FROM messages WHERE timestamp >= ? ORDER BY timestamp`,
+		)
+		.all(since);
+}
+
+const ACTIVITY_COLUMNS =
+	"session_file, parent, last_at, tool_name, tool_intent, tool_at, exit_at, exit_reason, yielded_at";
+
+interface ActivityDbRow {
+	session_file: string;
+	parent: string | null;
+	last_at: number | null;
+	tool_name: string | null;
+	tool_intent: string | null;
+	tool_at: number | null;
+	exit_at: number | null;
+	exit_reason: string | null;
+	yielded_at: number | null;
+}
+
+function fromActivityDbRow(row: ActivityDbRow): TranscriptActivityRow {
+	return {
+		sessionFile: row.session_file,
+		parent: row.parent,
+		lastAt: row.last_at,
+		toolName: row.tool_name,
+		toolIntent: row.tool_intent,
+		toolAt: row.tool_at,
+		exitAt: row.exit_at,
+		exitReason: row.exit_reason,
+		yieldedAt: row.yielded_at,
+	};
+}
+
+/** Stored activity of transcripts that wrote at or after `since`, plus that of `files` whatever its age. */
+export function getTranscriptActivity(since: number, files: readonly string[] = []): TranscriptActivityRow[] {
+	if (!db) return [];
+	return db
+		.query<ActivityDbRow, [number, string]>(
+			`SELECT ${ACTIVITY_COLUMNS} FROM transcript_activity
+			 WHERE last_at >= ? OR session_file IN (SELECT value FROM json_each(?))`,
+		)
+		.all(since, JSON.stringify(files))
+		.map(fromActivityDbRow);
 }
 
 /** The first attributed request of one root session transcript on one provider. */
@@ -1560,6 +1687,41 @@ function backfillCredentialIds(database: Database): void {
 }
 
 /**
+ * One-shot `file_offsets` wipe so the next sync re-parses every session and
+ * writes `usage_purpose` onto `model_usage` rows ingested before the column
+ * existed. Same sentinel protocol as {@link backfillCredentialIds}; when both
+ * are pending, one re-parse settles them together.
+ */
+function backfillUsagePurposes(database: Database): void {
+	const row = database.query("SELECT value FROM meta WHERE key = ?").get(USAGE_PURPOSE_BACKFILL_KEY) as
+		| { value: string }
+		| undefined;
+	if (!shouldResetBackfill(row?.value)) return;
+
+	database.run("DELETE FROM file_offsets");
+	database
+		.query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")
+		.run(USAGE_PURPOSE_BACKFILL_KEY, BACKFILL_PENDING);
+}
+
+/**
+ * One-shot `file_offsets` wipe so the next sync re-parses every session and
+ * fills `transcript_activity` for transcripts ingested before the table
+ * existed. Same sentinel protocol as {@link backfillCredentialIds}.
+ */
+function backfillTranscriptActivity(database: Database): void {
+	const row = database.query("SELECT value FROM meta WHERE key = ?").get(TRANSCRIPT_ACTIVITY_BACKFILL_KEY) as
+		| { value: string }
+		| undefined;
+	if (!shouldResetBackfill(row?.value)) return;
+
+	database.run("DELETE FROM file_offsets");
+	database
+		.query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")
+		.run(TRANSCRIPT_ACTIVITY_BACKFILL_KEY, BACKFILL_PENDING);
+}
+
+/**
  * Reclassify pre-existing `messages` rows by agent type once, after the
  * `agent_type` column is added to an older database (every prior row defaulted
  * to 'main' on the ALTER). Classification is purely path-based — derived from
@@ -1687,6 +1849,8 @@ export function markSessionBackfillsComplete(): void {
 			COST_REINGEST_BACKFILL_KEY,
 			COST_UNPRICED_BACKFILL_KEY,
 			CREDENTIAL_ID_BACKFILL_KEY,
+			USAGE_PURPOSE_BACKFILL_KEY,
+			TRANSCRIPT_ACTIVITY_BACKFILL_KEY,
 		]) {
 			markComplete.run(key, BACKFILL_COMPLETE);
 		}

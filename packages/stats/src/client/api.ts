@@ -8,6 +8,7 @@ import type {
 	FrustrationJobStatus,
 	GainDashboardStats,
 	LiveStatus,
+	LiveTrafficStats,
 	MessageStats,
 	ModelDashboardStats,
 	OverviewStats,
@@ -242,6 +243,11 @@ export async function getAccountDashboardStats(range: TimeRange, signal?: AbortS
 /** Requests and tokens per account per bucket over the range (unattributed traffic as its own series per provider). */
 export async function getAccountFlowStats(range: TimeRange, signal?: AbortSignal): Promise<AccountFlowStats> {
 	return fetchJson<AccountFlowStats>(`${API_BASE}/stats/accounts/flow?range=${encodeURIComponent(range)}`, { signal });
+}
+
+/** Live traffic over the last five minutes (sessions, targets, lines, latest requests). */
+export async function getLiveTrafficStats(signal?: AbortSignal): Promise<LiveTrafficStats> {
+	return fetchJson<LiveTrafficStats>(`${API_BASE}/stats/live`, { signal });
 }
 
 export async function getSessions(limit = 100, q?: string, signal?: AbortSignal): Promise<SessionSummary[]> {

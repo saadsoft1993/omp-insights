@@ -34,6 +34,7 @@ import {
 	type SpotlightParseRows,
 	type SpotlightParserState,
 } from "./spotlight-ingest";
+import { emptyActivity, type TranscriptActivity, trackActivity } from "./transcript-activity";
 import { computeUserMessageMetrics, judgeProse } from "./user-metrics";
 
 /** Basename of an advisor agent's transcript inside a session artifacts dir. */
@@ -329,7 +330,7 @@ function extractModelUsageStats(
 	agentType: AgentType,
 ): MessageStatsInput | null {
 	const timestamp = Date.parse(entry.timestamp);
-	return extractStats(
+	const stats = extractStats(
 		sessionFile,
 		folder,
 		{
@@ -352,6 +353,9 @@ function extractModelUsageStats(
 		undefined,
 		agentType,
 	);
+	if (!stats) return null;
+	// Persisted payloads are outside-controlled: a missing or empty purpose still marks the row as housekeeping.
+	return { ...stats, usagePurpose: typeof entry.purpose === "string" && entry.purpose ? entry.purpose : "unknown" };
 }
 
 /** Message timestamp, falling back to the entry's ISO timestamp, then 0. */
@@ -543,6 +547,10 @@ export interface ParseSessionResult {
 	newOffset: number;
 	parserState?: SessionParserState;
 	reset?: boolean;
+	/** What the parsed stretch says about the transcript's agent; absent when the file is gone. */
+	activity?: TranscriptActivity;
+	/** The stretch began at byte 0, so `activity` describes the whole transcript rather than a tail. */
+	activityFromStart?: boolean;
 }
 
 const CHECKPOINT_BYTES = 256;
@@ -588,10 +596,12 @@ export async function parseSessionFile(
 	// First call per id: the row `INSERT OR IGNORE` keeps, so it can be written with its result.
 	const callsById = new Map<string, ToolCallStats>();
 	let spotlight = new SpotlightCollector(sessionPath, folder, emptySpotlightState());
+	const activity = emptyActivity();
 
 	// Reduce each entry immediately so full replays do not retain tool-output/message bodies.
 	const visit = (entry: SessionEntry): void => {
 		spotlight.visit(entry);
+		trackActivity(activity, entry);
 		if (isServiceTierChange(entry)) {
 			currentServiceTier = coerceServiceTierByFamily(entry.serviceTier);
 			return;
@@ -704,6 +714,8 @@ export async function parseSessionFile(
 		spotlight: spotlight.rows,
 		newOffset,
 		reset,
+		activity,
+		activityFromStart: start === 0,
 		parserState: {
 			version: 1,
 			offset: newOffset,

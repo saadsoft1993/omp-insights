@@ -6,6 +6,11 @@
 
 - Added an Accounts page (`g a`) and `GET /api/stats/accounts`: requests, tokens and cost per stored credential, merged per account (same provider, email and organization, including a second login slot such as `anthropic-2` whose account id resolves to the same email and organization), with active/idle/blocked/needs-login status, share of the provider's traffic and the latest quota readings. Each provider's total for the range, the same number the Providers page shows, is split into requests on accounts and requests not tied to an account (background calls such as titles, memory and judges, API keys, gateways). Already-ingested sessions are re-read once on the next sync to attribute history.
 - Added a traffic split to the Accounts page and an Accounts card on Overview: per provider, the measured share of each account's requests over the last 15 minutes, which account served the first request of recent new main sessions and when that last changed in range (historical observations; sessions can be rotated afterwards), plus a stacked traffic-by-account chart backed by `GET /api/stats/accounts/flow`.
+- Added a Live page (`g v`) and `GET /api/stats/live`: sessions with a completed request in the last five minutes or subagents worth listing, each with the last tool it started and its subagents (running, done and waiting, finished, or silent, with current tool, accounts and rate), the accounts and `models.yml` gateways they send to, a "No account recorded" node per provider split into housekeeping calls (by `model_usage` purpose) and ordinary turns, lines weighted by the last minute's rate with dots at that rate, and the latest 25 requests. Each poll also re-syncs recently written transcripts, so it stays within a few seconds of the transcripts. Stored requests now keep the purpose of `model_usage` entries, and ingest keeps each transcript's last tool name and intent, exit and turn state (never tool arguments); already-ingested sessions are re-read once on the next sync to fill both in.
+
+### Changed
+
+- The session watcher now syncs a written transcript within 2 seconds even while sessions keep writing; before, every new write pushed the sync back.
 
 ## [18.17.0] - 2026-11-06
 

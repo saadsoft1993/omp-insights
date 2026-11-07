@@ -8,6 +8,7 @@ import {
 	LayoutGrid,
 	type LucideIcon,
 	PlugZap,
+	Radio,
 	ScanSearch,
 	Sparkles,
 	SquareChartGantt,
@@ -20,6 +21,7 @@ export type DashboardSection =
 	| "models"
 	| "providers"
 	| "accounts"
+	| "live"
 	| "costs"
 	| "requests"
 	| "errors"
@@ -52,6 +54,7 @@ export const NAV: readonly NavGroup[] = [
 			{ id: "models", label: "Models", icon: Cpu, hotkey: "m" },
 			{ id: "providers", label: "Providers", icon: PlugZap, hotkey: "p" },
 			{ id: "accounts", label: "Accounts", icon: UserRound, hotkey: "a" },
+			{ id: "live", label: "Live", icon: Radio, hotkey: "v" },
 			{ id: "costs", label: "Costs", icon: Coins, hotkey: "c" },
 		],
 	},

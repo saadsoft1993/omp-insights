@@ -15,12 +15,18 @@ import * as path from "node:path";
 import { getSessionsDir, logger } from "@oh-my-pi/pi-utils";
 import { syncAllSessions } from "./aggregator";
 import { getDataVersion, initDb } from "./db";
-import { isCompressScratchPath } from "./parser";
+import { isCompressScratchPath, listAllSessionFiles } from "./parser";
 import { getRollupStatus, refreshRollups } from "./rollup";
 import type { LiveStatus, LiveSyncStatus } from "./shared-types";
 
 /** Wait this long after the last transcript write before syncing it. */
 const WATCH_DEBOUNCE_MS = 800;
+/**
+ * Never hold a written transcript back longer than this. With several sessions
+ * running, writes arrive more often than the debounce, which alone would keep
+ * postponing the sync until the periodic full resync.
+ */
+const WATCH_MAX_WAIT_MS = 2000;
 /** Full resync cadence, catching anything the watcher missed (or everything, without one). */
 const FULL_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 /** Minimum spacing of `version` bumps; each bump makes open pages refetch. */
@@ -32,6 +38,10 @@ const VERSION_THROTTLE_MS = 1000;
 const SYNCING_VERSION_THROTTLE_MS = 15_000;
 /** Delay before retrying a failed sync (typically a lock held by another omp process). */
 const SYNC_RETRY_MS = 10_000;
+/** Minimum spacing of {@link StatsLive.syncRecentlyWritten} scans. */
+const RECENT_SCAN_MS = 1500;
+/** A live-view scan re-syncs transcripts modified this recently. */
+const RECENT_WRITE_WINDOW_MS = 10 * 60 * 1000;
 /** Minimum spacing of progress-only status events. */
 const PROGRESS_THROTTLE_MS = 150;
 
@@ -57,6 +67,8 @@ export class StatsLive {
 	#progressTimer: NodeJS.Timeout | null = null;
 	#retryTimer: NodeJS.Timeout | null = null;
 	#lastVersionAt = 0;
+	#lastRecentScan = 0;
+	#scanningRecent = false;
 
 	/** Queued work: specific files, or `"all"` for a full sync. */
 	#queued: Set<string> | "all" | null = null;
@@ -107,6 +119,40 @@ export class StatsLive {
 			for (const file of files) this.#queued.add(file);
 		}
 		void this.#drain();
+	}
+
+	/**
+	 * Queue a sync of transcripts written in the last few minutes, at most once
+	 * per {@link RECENT_SCAN_MS}. The live traffic view calls this on every poll
+	 * so it stays current without relying on the watcher, which can deliver no
+	 * events at all (seen on macOS) and otherwise leaves new requests to the
+	 * periodic full sync. Unchanged transcripts cost a stat; changed ones are
+	 * read from their stored offset.
+	 */
+	syncRecentlyWritten(): void {
+		const now = Date.now();
+		if (this.#scanningRecent || now - this.#lastRecentScan < RECENT_SCAN_MS) return;
+		this.#lastRecentScan = now;
+		this.#scanningRecent = true;
+		void (async () => {
+			try {
+				const recent: string[] = [];
+				await Promise.all(
+					(await listAllSessionFiles()).map(async file => {
+						try {
+							if (now - (await fs.promises.stat(file)).mtimeMs <= RECENT_WRITE_WINDOW_MS) recent.push(file);
+						} catch {
+							// Removed between listing and stat: nothing to sync.
+						}
+					}),
+				);
+				if (recent.length > 0) this.requestSync(recent);
+			} catch (error) {
+				logger.debug("Stats recent-transcript scan failed", { error: String(error) });
+			} finally {
+				this.#scanningRecent = false;
+			}
+		})();
 	}
 
 	async #drain(): Promise<void> {
@@ -242,17 +288,20 @@ export class StatsLive {
 	#watch(): void {
 		const root = getSessionsDir();
 		const pending = new Set<string>();
+		let pendingSince = 0;
 		try {
 			this.#watcher = fs.watch(root, { recursive: true }, (_event, filename) => {
 				if (!filename?.endsWith(".jsonl") || isCompressScratchPath(filename)) return;
+				if (pending.size === 0) pendingSince = Date.now();
 				pending.add(path.join(root, filename));
 				clearTimeout(this.#debounceTimer ?? undefined);
+				const wait = Math.max(0, Math.min(WATCH_DEBOUNCE_MS, pendingSince + WATCH_MAX_WAIT_MS - Date.now()));
 				this.#debounceTimer = setTimeout(() => {
 					this.#debounceTimer = null;
 					const files = [...pending];
 					pending.clear();
 					this.requestSync(files);
-				}, WATCH_DEBOUNCE_MS);
+				}, wait);
 			});
 			this.#watcher.on("error", error => {
 				logger.warn("Stats session watcher failed; relying on periodic sync", { error: String(error) });

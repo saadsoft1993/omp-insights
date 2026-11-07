@@ -1184,6 +1184,150 @@ export interface AccountFlowStats {
 }
 
 /**
+ * What the live view can honestly say about a target from the logs. Requests
+ * are written when they complete, so `quiet` means no completed request in the
+ * last minute; one may still be in flight. `rate_limited` means an active block
+ * in agent.db is holding traffic back; a nearly used quota is only a warning.
+ */
+export type LiveTargetState = "active" | "quiet" | "rate_limited" | "needs_login";
+
+/**
+ * A subagent's state, from its transcript: `running` (still writing, no exit),
+ * `idle` (ended its turn with a plain answer; can be messaged again),
+ * `finished` (exited after its last entry), `stopped` (no exit recorded and
+ * silent for 15 minutes).
+ */
+export type LiveAgentStatus = "running" | "idle" | "finished" | "stopped";
+
+/** The last tool a transcript started: its name and omp's short intent text (never the arguments). */
+export interface LiveToolActivity {
+	name: string | null;
+	intent: string | null;
+	/** Epoch ms it started. */
+	at: number | null;
+}
+
+/** A subagent (or advisor) running inside a session. */
+export interface LiveAgent {
+	/** Its transcript path. */
+	id: string;
+	/** Path inside the session folder without `.jsonl` (`Builder`, `Parent/Child`); advisors read `Advisor`. */
+	name: string;
+	status: LiveAgentStatus;
+	doing: LiveToolActivity | null;
+	/** Epoch ms of its newest transcript entry. */
+	last: number | null;
+	/** Completed requests in the last minute. */
+	rpm: number;
+	/** Completed requests in the last five minutes. */
+	requests: number;
+	/** Targets its requests went to in the last five minutes. */
+	targets: string[];
+}
+
+/**
+ * A session that completed a request in the last five minutes or has
+ * subagents worth listing; its subagent transcripts' requests count as it.
+ */
+export interface LiveSession {
+	/** Root session transcript path. */
+	id: string;
+	/** Session title when the transcript has one, else the project label. */
+	name: string;
+	/** Project label: the session's working directory name, else its sessions folder. */
+	project: string;
+	/** Epoch ms the session started, from its file name. */
+	started: number | null;
+	/** Completed requests in the last minute, its subagents' included. */
+	rpm: number;
+	/** Epoch ms of its newest completed request. */
+	last: number | null;
+	/** The last tool the session's own transcript started. */
+	doing: LiveToolActivity | null;
+	/** Running first, then waiting, stopped and finished; each newest first. */
+	agents: LiveAgent[];
+	agentsRunning: number;
+	/**
+	 * Sent a request in the last minute or has a subagent running; a session
+	 * whose own turn ended while its subagents work is still working.
+	 */
+	working: boolean;
+}
+
+/**
+ * Requests of the five-minute window that recorded no account, split by kind:
+ * housekeeping calls journaled as `model_usage` (titles, memory, judges and
+ * the like, by purpose) versus ordinary assistant turns, for example turns
+ * made with an API key.
+ */
+export interface LiveRequestBreakdown {
+	housekeeping: number;
+	turns: number;
+	/** Housekeeping requests per `model_usage` purpose, most first. */
+	purposes: Array<{ purpose: string; requests: number }>;
+}
+
+/** Where requests go: a stored account, a configured API-key gateway, or a provider's requests with no account recorded. */
+export interface LiveTarget {
+	key: string;
+	provider: string;
+	kind: "account" | "gateway" | "no_account";
+	label: string;
+	/**
+	 * Accounts: the email when the label is something else, else the credential ids behind it. Gateways:
+	 * `API-key gateway · host`. No account recorded: that the session log names no account.
+	 */
+	meta: string | null;
+	state: LiveTargetState;
+	/** A current quota window is at 95% or more. A warning only, not a state. */
+	quotaWarning: boolean;
+	/** Completed requests in the last minute. */
+	rpm: number;
+	/** Tokens of those requests (uncached input + cache reads + cache writes + output). */
+	tpm: number;
+	/** Epoch ms of the newest completed request, any age. */
+	last: number | null;
+	/** Latest quota readings whose window has not reset. */
+	quotas: AccountQuotaWindow[];
+	/** For gateways and requests with no account recorded; null for accounts. */
+	breakdown: LiveRequestBreakdown | null;
+}
+
+/** Traffic from one session to one target in the five-minute window. */
+export interface LiveEdge {
+	from: string;
+	to: string;
+	/** Completed requests in the last minute; 0 = traffic in the last five minutes only. */
+	rpm: number;
+	last: number;
+}
+
+/** One completed request in the five-minute window. */
+export interface LiveRequest {
+	ts: number;
+	session: string;
+	/** The subagent that made it, when not the session's own transcript. */
+	agent: string | null;
+	target: string;
+	model: string;
+	tokens: number;
+}
+
+/** Live traffic payload (`GET /api/stats/live`). */
+export interface LiveTrafficStats {
+	now: number;
+	/** Rates (`rpm`, `tpm`) count this trailing window. */
+	windowMs: number;
+	/** Sessions, edges and requests cover this trailing window. */
+	flowWindowMs: number;
+	sessions: LiveSession[];
+	targets: LiveTarget[];
+	edges: LiveEdge[];
+	/** Newest first, at most 25. */
+	recent: LiveRequest[];
+}
+
+/**
  * One row of the Traces session list: a root session with every child
  * transcript (task subagents, advisors) folded in.
  */

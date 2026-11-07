@@ -1073,7 +1073,7 @@ export async function getTraceEntry(fileParam: string, entryId: string): Promise
 // ---------------------------------------------------------------------------
 // Session list
 
-interface SessionMetadata {
+export interface SessionMetadata {
 	title: string | null;
 	cwd: string | null;
 }
@@ -1106,8 +1106,8 @@ async function readSessionMetadataHead(file: string): Promise<string> {
 	return head;
 }
 
-/** Read list metadata from the fixed title slot and session header. */
-async function readSessionMetadata(file: string): Promise<SessionMetadata> {
+/** Read list metadata from the fixed title slot and session header (cached per file mtime). */
+export async function readSessionMetadata(file: string): Promise<SessionMetadata> {
 	let mtimeMs: number;
 	try {
 		mtimeMs = (await fs.stat(file)).mtimeMs;
@@ -1152,7 +1152,7 @@ interface SummaryFold extends SessionSummary {
 	modelSet: Set<string>;
 }
 /** Parse the ms timestamp from a session basename (`2026-09-01T10-24-49-741Z_<uuid>.jsonl`). */
-function basenameTimestamp(base: string): number | undefined {
+export function basenameTimestamp(base: string): number | undefined {
 	const match = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z_/.exec(base);
 	if (!match) return undefined;
 	const ms = Date.parse(`${match[1]}T${match[2]}:${match[3]}:${match[4]}.${match[5]}Z`);

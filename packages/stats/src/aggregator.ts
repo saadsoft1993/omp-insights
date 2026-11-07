@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAgentDbPath, getStatsDbPath, workerHostEntry } from "@oh-my-pi/pi-utils";
+import { getAgentDbPath, getSessionsDir, getStatsDbPath, workerHostEntry } from "@oh-my-pi/pi-utils";
 import { withFileLock } from "@oh-my-pi/pi-utils/file-lock";
 import { buildAccountFlow, buildAccountStats, RECENT_WINDOW_MS, readAgentAccountData, routingSince } from "./accounts";
 import {
@@ -13,12 +13,15 @@ import {
 	getFileOffsets,
 	getMessageById,
 	getMessageCount,
+	getRequestsSince,
 	getSessionStarts,
+	getTranscriptActivity,
 	initDb,
 	markSessionBackfillsComplete,
 	type ParsedSession,
 	prepareSessionSync,
 } from "./db";
+import { ACTIVITY_LOOKBACK_MS, buildLiveTraffic, FLOW_WINDOW_MS, loadGateways, rootSessionOf } from "./live-traffic";
 import {
 	getSessionEntry,
 	listAllSessionFiles,
@@ -48,6 +51,7 @@ import {
 } from "./rollup";
 import { spotlightRowCount } from "./spotlight-ingest";
 import type { SyncWorkerRequest, SyncWorkerResponse } from "./sync-worker";
+import { readSessionMetadata } from "./trace";
 // Coding-agent binary/bundle workers route through the CLI entrypoint with a
 // hidden argv mode, so the compiled binary and npm bundle only need one
 // JavaScript entry. Standalone source `omp-stats` keeps using this package's
@@ -57,6 +61,7 @@ import type {
 	AccountFlowStats,
 	DashboardStats,
 	FolderStats,
+	LiveTrafficStats,
 	MessageStats,
 	ProviderDashboardStats,
 	ProviderWindowStats,
@@ -665,6 +670,61 @@ export async function getAccountDashboardStats(range?: string | null): Promise<A
 export async function getAccountFlowStats(range?: string | null): Promise<AccountFlowStats> {
 	await initDb();
 	return buildAccountFlow(getCredentialTimeSeries(getTimeRangeConfig(range)), readAgentAccountData(Date.now()));
+}
+
+/**
+ * Live traffic over the last five minutes: sessions with their subagents, the
+ * accounts, gateways and no-account nodes they send requests to, the lines
+ * between them and the latest requests. Read raw from `messages` and
+ * `transcript_activity`, so it is as fresh as ingest.
+ */
+export async function getLiveTrafficStats(): Promise<LiveTrafficStats> {
+	await initDb();
+	const nowMs = Date.now();
+	const rows = getRequestsSince(nowMs - FLOW_WINDOW_MS);
+	const allTime = getStatsByCredential(null);
+	const { accounts } = buildAccountStats({
+		inRange: [],
+		allTime,
+		recent: [],
+		sessionStarts: [],
+		rangeCutoff: null,
+		agent: readAgentAccountData(nowMs),
+		nowMs,
+	});
+	const lastNoAccount = new Map<string, number>();
+	for (const row of allTime) if (row.credentialId === null) lastNoAccount.set(row.provider, row.lastUsed);
+	const sessionsDir = getSessionsDir();
+	const recentActivity = getTranscriptActivity(nowMs - ACTIVITY_LOOKBACK_MS);
+	const roots = [
+		...new Set(
+			[...rows.map(row => row.sessionFile), ...recentActivity.map(row => row.sessionFile)].map(
+				file => rootSessionOf(file, sessionsDir).id,
+			),
+		),
+	];
+	// The sessions' own transcripts may have been quiet longer than the lookback; their last tool still shows.
+	const seen = new Set(recentActivity.map(row => row.sessionFile));
+	const activity = [
+		...recentActivity,
+		...getTranscriptActivity(
+			Number.MAX_SAFE_INTEGER,
+			roots.filter(root => !seen.has(root)),
+		),
+	];
+	const metadata = new Map(
+		await Promise.all(roots.map(async root => [root, await readSessionMetadata(root)] as const)),
+	);
+	return buildLiveTraffic({
+		rows,
+		activity,
+		accounts,
+		lastNoAccount,
+		gateways: loadGateways(),
+		metadata,
+		sessionsDir,
+		nowMs,
+	});
 }
 
 const USAGE_CACHE_TTL_MS = 60_000;

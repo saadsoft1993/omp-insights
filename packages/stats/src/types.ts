@@ -58,6 +58,12 @@ export interface MessageStats {
 	 * the field existed). Optional for the same reason as {@link serviceTier}.
 	 */
 	credentialId?: number | null;
+	/**
+	 * `purpose` of a `model_usage` entry (a housekeeping call such as a title,
+	 * memory or judge request), or `null` for an assistant turn. Optional for
+	 * the same reason as {@link serviceTier}.
+	 */
+	usagePurpose?: string | null;
 }
 
 /**

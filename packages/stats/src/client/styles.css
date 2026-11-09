@@ -707,8 +707,21 @@ kbd {
 		display: none !important;
 	}
 
-	.machine-banner-scope {
-		display: none;
+	/* Narrow screens: the chip gets its own row under the controls instead of being squeezed between them. */
+	:root {
+		--topbar-h: 88px;
+	}
+
+	.topbar {
+		align-items: flex-start;
+		padding-top: 8px;
+	}
+
+	.machine-banner {
+		position: absolute;
+		left: 14px;
+		right: 14px;
+		bottom: 8px;
 	}
 }
 

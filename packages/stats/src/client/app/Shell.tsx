@@ -7,6 +7,7 @@ import { Segmented } from "../ui";
 import { CloseButton } from "./CloseButton";
 import { isDialogOpen, isTypingTarget } from "./keys";
 import { LiveChip } from "./LiveChip";
+import { MachineBanner } from "./MachineBanner";
 import { type DashboardSection, NAV } from "./nav";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -72,6 +73,7 @@ export function Shell({ section, onSectionChange, range, onRangeChange, children
 					<span className="topbar-slash">/</span>
 					<span className="topbar-title">stats</span>
 				</div>
+				<MachineBanner />
 				<div className="topbar-spacer" />
 				<div className="topbar-actions">
 					<span className="topbar-hide-narrow">

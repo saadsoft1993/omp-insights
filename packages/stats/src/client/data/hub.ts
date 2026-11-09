@@ -112,6 +112,11 @@ export function getHubProjects(signal?: AbortSignal): Promise<{ projects: HubPro
 	return hubFetch("projects", { signal });
 }
 
+/** The Mac this hub runs on (omp's `collab.displayName`). */
+export function getHubMachine(signal?: AbortSignal): Promise<{ name: string }> {
+	return hubFetch("machine", { signal });
+}
+
 export function getHubRelay(signal?: AbortSignal): Promise<HubRelayHealth> {
 	return hubFetch("relay", { signal });
 }

@@ -434,6 +434,41 @@ kbd {
 	transition: border-color var(--dur-2) var(--ease);
 }
 
+/* Machine chip: the accent is a per-Mac hue (see app/machine.ts); text stays on the neutral ink for AA contrast. */
+.machine-banner {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	padding: 4px 12px;
+	border: 1px solid var(--machine-accent);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--machine-accent) 18%, var(--card));
+	color: var(--ink-1);
+	font-size: 13px;
+	line-height: 1.2;
+	white-space: nowrap;
+}
+
+.machine-banner-dot {
+	flex: none;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--machine-accent);
+}
+
+.machine-banner-name {
+	font-weight: 650;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.machine-banner-scope {
+	color: var(--ink-2);
+	font-size: 12px;
+}
+
 .topbar[data-scrolled="true"] {
 	border-bottom-color: var(--line-1);
 }
@@ -670,6 +705,10 @@ kbd {
 
 	.topbar-hide-narrow {
 		display: none !important;
+	}
+
+	.machine-banner-scope {
+		display: none;
 	}
 }
 

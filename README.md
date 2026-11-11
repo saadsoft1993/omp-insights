@@ -1,3 +1,10 @@
+> [!IMPORTANT]
+> **This is omp-insights, a modified fork of [omp](https://github.com/can1357/oh-my-pi). It is not the official omp** and is not
+> supported by its authors. It adds an Accounts page, a Live traffic page and hub pages (Sessions, Relay, Alerts) to the
+> `omp stats` dashboard; nothing else is changed. See [FORK.md](FORK.md) for what changed, how to run it, and how it relates to
+> upstream. Upstream's README follows unchanged. omp is by Mario Zechner, Can Bölük and Stencil Labs, Inc. (MIT licence, see
+> [LICENSE](LICENSE)).
+
 <p align="center">
   <img src="https://github.com/can1357/oh-my-pi/blob/main/assets/hero.png?raw=true" alt="omp">
 </p>

@@ -52,7 +52,9 @@ You need [Bun](https://bun.sh) 1.4.4 or newer (the repository pins `bun@>=1.4.4`
 This was tried with Bun 1.4.4 on macOS (Apple silicon).
 
 ```bash
-git clone https://github.com/saadsoft1993/omp-insights.git
+# A shallow clone is enough to run it and much faster: a full clone of this repository carries upstream's whole history
+# (a full clone stalled for 15 minutes on one machine, a shallow one took about 30 seconds).
+git clone --depth 1 https://github.com/saadsoft1993/omp-insights.git
 cd omp-insights
 
 # 1. Dependencies. --ignore-scripts skips the repository's "prepare" step, which regenerates the HTML export viewer
@@ -126,6 +128,14 @@ git checkout insights                  && git rebase --onto local-dashboard <old
 
 Use `git rev-parse <branch>` before the first rebase to note each old tip. Then run `bun install`, the checks above, and push with
 `git push --force-with-lease`. Most conflicts will be in `packages/stats/src/server.ts`, `db.ts` and `client/App.tsx`.
+A shallow clone cannot rebase onto upstream's history: run `git fetch --unshallow` (or clone without `--depth`) before you do this.
+
+## Related projects
+
+- [omp-tether](https://github.com/saadsoft1993/omp-tether): plugins for omp that let you reach your own sessions from other
+  places on your own machines (session control, background services, a private relay, a local dashboard).
+- [omp-hindsight-guard](https://github.com/saadsoft1993/omp-hindsight-guard): a redacting proxy, per-folder memory banks and a
+  one-time importer for a self-run Hindsight memory server used with omp.
 
 ## Contributing
 

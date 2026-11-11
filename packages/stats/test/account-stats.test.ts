@@ -15,7 +15,7 @@ import {
 	getProviderDashboardStats,
 	syncAllSessions,
 } from "@oh-my-pi/omp-stats/aggregator";
-import { closeDb, getRecentRequests, initDb, insertMessageStats } from "@oh-my-pi/omp-stats/db";
+import { closeDb, getMessageCount, getRecentRequests, initDb, insertMessageStats } from "@oh-my-pi/omp-stats/db";
 import { parseSessionFile } from "@oh-my-pi/omp-stats/parser";
 import type { CredentialAggregate } from "@oh-my-pi/omp-stats/rollup";
 import { getAgentDbPath, getSessionsDir, getStatsDbPath } from "@oh-my-pi/pi-utils";
@@ -203,7 +203,8 @@ describe("credential attribution at ingest", () => {
 
 		const result = await parseSessionFile(file);
 		await initDb();
-		expect(insertMessageStats(result.stats)).toBe(3);
+		insertMessageStats(result.stats);
+		expect(getMessageCount()).toBe(3);
 
 		const byEntry = new Map(getRecentRequests(10).map(row => [row.entryId, row.credentialId]));
 		expect(byEntry.get("turn-1")).toBe(7);

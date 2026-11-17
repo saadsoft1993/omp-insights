@@ -34,7 +34,7 @@ function oauth(id: number, identityKey: string, disabledCause: string | null = n
 	return { id, provider: "anthropic", credentialType: "oauth", disabledCause, identityKey, updatedAt: id };
 }
 
-const SPECTRUM = "anthropic/email:team@example.com|org:org-1";
+const TEAM = "anthropic/email:team@example.com|org:org-1";
 const PERSONAL = "anthropic/email:me@example.com|org:org-3";
 const ROUTING_CREDENTIALS = [
 	oauth(1, "email:team@example.com|org:org-1"),
@@ -344,7 +344,7 @@ describe("buildAccountStats", () => {
 						provider: "anthropic",
 						credentialType: "oauth",
 						disabledCause: null,
-						identityKey: "email:a@x.io",
+						identityKey: "email:a@example.com",
 						updatedAt: 1,
 					},
 					{
@@ -352,7 +352,7 @@ describe("buildAccountStats", () => {
 						provider: "anthropic",
 						credentialType: "oauth",
 						disabledCause: "deleted by user",
-						identityKey: "email:b@x.io",
+						identityKey: "email:b@example.com",
 						updatedAt: 1,
 					},
 					{
@@ -360,7 +360,7 @@ describe("buildAccountStats", () => {
 						provider: "anthropic",
 						credentialType: "oauth",
 						disabledCause: "deleted by user",
-						identityKey: "email:c@x.io",
+						identityKey: "email:c@example.com",
 						updatedAt: 1,
 					},
 					{
@@ -368,7 +368,7 @@ describe("buildAccountStats", () => {
 						provider: "openai-codex",
 						credentialType: "oauth",
 						disabledCause: null,
-						identityKey: "email:d@x.io",
+						identityKey: "email:d@example.com",
 						updatedAt: 1,
 					},
 				],
@@ -376,8 +376,8 @@ describe("buildAccountStats", () => {
 				quotas: [
 					{
 						provider: "anthropic",
-						accountKey: "oauth|email:a@x.io",
-						email: "a@x.io",
+						accountKey: "oauth|email:a@example.com",
+						email: "a@example.com",
 						accountId: null,
 						limitId: "5h",
 						label: "Claude 5 Hour",
@@ -389,8 +389,8 @@ describe("buildAccountStats", () => {
 					},
 					{
 						provider: "anthropic",
-						accountKey: "oauth|email:a@x.io",
-						email: "a@x.io",
+						accountKey: "oauth|email:a@example.com",
+						email: "a@example.com",
 						accountId: null,
 						limitId: "7d",
 						label: "Claude 7 Day",
@@ -407,15 +407,15 @@ describe("buildAccountStats", () => {
 			nowMs: now,
 		});
 		const status = new Map(stats.accounts.map(a => [a.label, a.status]));
-		expect(status.get("a@x.io")).toBe("blocked");
-		expect(status.get("b@x.io")).toBe("needs_login");
-		expect(status.get("c@x.io")).toBe("needs_login");
-		expect(status.get("d@x.io")).toBe("never");
-		expect(stats.accounts.find(a => a.label === "a@x.io")?.blocks).toEqual([
+		expect(status.get("a@example.com")).toBe("blocked");
+		expect(status.get("b@example.com")).toBe("needs_login");
+		expect(status.get("c@example.com")).toBe("needs_login");
+		expect(status.get("d@example.com")).toBe("never");
+		expect(stats.accounts.find(a => a.label === "a@example.com")?.blocks).toEqual([
 			{ scope: "tier:fable", until: now + HOUR },
 		]);
-		expect(stats.accounts.find(a => a.label === "b@x.io")?.disabledCause).toBe("deleted by user");
-		const quotas = new Map(stats.accounts.find(a => a.label === "a@x.io")?.quotas.map(q => [q.limitId, q]));
+		expect(stats.accounts.find(a => a.label === "b@example.com")?.disabledCause).toBe("deleted by user");
+		const quotas = new Map(stats.accounts.find(a => a.label === "a@example.com")?.quotas.map(q => [q.limitId, q]));
 		expect(quotas.get("5h")?.usedFraction).toBeNull();
 		expect(quotas.get("7d")?.usedFraction).toBe(0.4);
 	});
@@ -441,7 +441,7 @@ describe("account routing", () => {
 		expect(routing.recent.requests).toBe(100);
 		expect(routing.recent.accounts).toEqual([
 			{ accountKey: PERSONAL, requests: 85, share: 0.85 },
-			{ accountKey: SPECTRUM, requests: 15, share: 0.15 },
+			{ accountKey: TEAM, requests: 15, share: 0.15 },
 		]);
 		const personal = stats.accounts.find(a => a.key === PERSONAL);
 		expect(personal).toMatchObject({
@@ -480,12 +480,12 @@ describe("account routing", () => {
 		});
 		expect(wide.routing[0].lastAssignmentChange).toEqual({
 			fromAccountKey: PERSONAL,
-			toAccountKey: SPECTRUM,
+			toAccountKey: TEAM,
 			at: now - 2 * HOUR,
 		});
 		expect(wide.routing[0].newSessions).toMatchObject({
 			sessions: 1,
-			lastAccount: SPECTRUM,
+			lastAccount: TEAM,
 			lastAccountSince: now - 2 * HOUR,
 		});
 
@@ -529,7 +529,7 @@ describe("account routing", () => {
 		expect(day.routing).toHaveLength(1);
 		const [routing] = day.routing;
 		expect(routing.recent.accounts.map(a => [a.accountKey, a.requests])).toEqual([
-			[SPECTRUM, 2],
+			[TEAM, 2],
 			[PERSONAL, 1],
 		]);
 		expect(routing.newSessions).toMatchObject({
@@ -539,13 +539,13 @@ describe("account routing", () => {
 			lastAccountSince: now - 40 * MINUTE,
 		});
 		expect(routing.lastAssignmentChange).toEqual({
-			fromAccountKey: SPECTRUM,
+			fromAccountKey: TEAM,
 			toAccountKey: PERSONAL,
 			at: now - 40 * MINUTE,
 		});
 		const byKey = new Map(day.accounts.map(a => [a.key, a]));
 		expect(byKey.get(PERSONAL)).toMatchObject({ servedLatestNewSession: true, servingNow: true });
-		expect(byKey.get(SPECTRUM)).toMatchObject({ servedLatestNewSession: false, servingNow: true });
+		expect(byKey.get(TEAM)).toMatchObject({ servedLatestNewSession: false, servingNow: true });
 
 		// Over the last hour the older session's start is out of range, so no assignment change is observed.
 		expect((await getAccountDashboardStats("1h")).routing[0].lastAssignmentChange).toBeNull();
@@ -563,19 +563,19 @@ describe("account identity", () => {
 			...NO_ROUTING,
 			agent: {
 				credentials: [
-					oauth(3, "email:a@x.io|org:o"),
+					oauth(3, "email:a@example.com|org:o"),
 					{ ...oauth(6, "account:U"), provider: "anthropic-2" },
 					// No usage-history key names this uuid: nothing to merge it with.
 					{ ...oauth(7, "account:V"), provider: "anthropic-2" },
 				],
 				blocks: [],
 				quotas: [],
-				accountKeys: ["oauth|account:U|email:a@x.io|org:o"],
+				accountKeys: ["oauth|account:U|email:a@example.com|org:o"],
 			},
 			nowMs: Date.now(),
 		});
 		expect(stats.accounts.map(a => [a.provider, a.label, a.credentialIds, a.requests])).toEqual([
-			["anthropic", "a@x.io", [3, 6], 7],
+			["anthropic", "a@example.com", [3, 6], 7],
 			["anthropic-2", "account:V", [7], 0],
 		]);
 		// The totals still count each request under its own provider, like the Providers page.
@@ -594,11 +594,11 @@ describe("account identity", () => {
 				credentials: [{ ...oauth(6, "account:U"), provider: "anthropic-2" }],
 				blocks: [],
 				quotas: [],
-				accountKeys: ["oauth|account:U|email:a@x.io|org:o"],
+				accountKeys: ["oauth|account:U|email:a@example.com|org:o"],
 			},
 			nowMs: Date.now(),
 		});
-		expect(stats.accounts.map(a => [a.provider, a.label, a.orgId])).toEqual([["anthropic-2", "a@x.io", "o"]]);
+		expect(stats.accounts.map(a => [a.provider, a.label, a.orgId])).toEqual([["anthropic-2", "a@example.com", "o"]]);
 	});
 });
 
@@ -659,13 +659,13 @@ describe("account flow", () => {
 		expect(flow.series.map(s => [s.key, s.label, s.accountKey]).sort()).toEqual(
 			[
 				[PERSONAL, "me@example.com", PERSONAL],
-				[SPECTRUM, "team@example.com", SPECTRUM],
+				[TEAM, "team@example.com", TEAM],
 				["anthropic/unattributed", "Unattributed", null],
 			].sort(),
 		);
 		expect(flow.points).toEqual([
 			{ timestamp: bucket, key: PERSONAL, requests: 721, tokens: 7210 },
-			{ timestamp: bucket, key: SPECTRUM, requests: 131, tokens: 1310 },
+			{ timestamp: bucket, key: TEAM, requests: 131, tokens: 1310 },
 			{ timestamp: bucket, key: "anthropic/unattributed", requests: 40, tokens: 400 },
 			{ timestamp: bucket + HOUR, key: PERSONAL, requests: 7, tokens: 70 },
 		]);

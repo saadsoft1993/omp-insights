@@ -3,9 +3,19 @@ import type { ReactNode } from "react";
 export type Tone = "neutral" | "ok" | "warn" | "bad" | "accent";
 
 /** Pill label; status badges always carry a word, never color alone. */
-export function Badge({ tone = "neutral", mono, children }: { tone?: Tone; mono?: boolean; children: ReactNode }) {
+export function Badge({
+	tone = "neutral",
+	mono,
+	title,
+	children,
+}: {
+	tone?: Tone;
+	mono?: boolean;
+	title?: string;
+	children: ReactNode;
+}) {
 	return (
-		<span className="badge" data-tone={tone} data-mono={mono ?? false}>
+		<span className="badge" data-tone={tone} data-mono={mono ?? false} title={title}>
 			{children}
 		</span>
 	);

@@ -1,6 +1,6 @@
 /**
  * Which Sessions-page controls a session offers, and why one is off. Mirrors the hub's own rules
- * (the hub's control module), which decide in the end.
+ * (`omp_hub/control.py`), which decide in the end.
  */
 import type { HubSession } from "./hub";
 
@@ -57,7 +57,7 @@ export function killConfirmMatches(s: HubSession, typed: string): boolean {
 	return value === (s.sessionName ?? "").trim() || value === projectName(s);
 }
 
-/** "in herdr: sms › omp", or null when herdr doesn't know the session. */
+/** "in herdr: sample-app › omp", or null when herdr doesn't know the session. */
 export function herdrPlace(s: HubSession): string | null {
 	const ws = s.herdr?.workspace;
 	if (!ws) return null;

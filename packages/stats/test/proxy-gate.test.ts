@@ -109,7 +109,7 @@ describe("readProxyKey", () => {
 });
 
 describe("createProxyGate", () => {
-	it("signs exactly like the hub (fixed vector shared with the hub's own tests)", () => {
+	it("signs exactly like the hub (fixed vector shared with the hub's omp_hub/test_hub.py)", () => {
 		const key = Buffer.from(KEY_A, "hex");
 		const nonce = "0".repeat(32);
 		expect(proxyRequestMac(key, "GET", "/api/status", "1000", nonce)).toBe(

@@ -9,9 +9,11 @@ import {
 	AccountsRoute,
 	AlertsRoute,
 	CostsRoute,
+	DevicesRoute,
 	ErrorsRoute,
 	FrustrationRoute,
 	GainRoute,
+	JobsRoute,
 	LiveRoute,
 	ModelsRoute,
 	OverviewRoute,
@@ -37,7 +39,7 @@ export default function App() {
 }
 
 function Dashboard() {
-	const { section, setSection, range, setRange, session, setSession } = useHashRoute();
+	const { section, setSection, range, setRange, session, setSession, hubSession, setHubSession } = useHashRoute();
 	const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
 	// Stable identity so the drawer's effects don't tear down on every render.
 	const closeDrawer = useCallback(() => setSelectedRequestId(null), []);
@@ -51,11 +53,15 @@ function Dashboard() {
 		const active = target === section;
 		switch (target) {
 			case "sessions":
-				return <SessionsRoute active={active} />;
+				return <SessionsRoute active={active} selected={hubSession} onSelect={setHubSession} />;
 			case "relay":
 				return <RelayRoute active={active} />;
 			case "alerts":
 				return <AlertsRoute active={active} />;
+			case "jobs":
+				return <JobsRoute active={active} />;
+			case "devices":
+				return <DevicesRoute active={active} />;
 			case "overview":
 				return <OverviewRoute active={active} range={range} onRequestClick={setSelectedRequestId} />;
 			case "requests":

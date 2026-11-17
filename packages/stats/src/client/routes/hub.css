@@ -140,6 +140,13 @@
 	font-weight: 500;
 }
 
+.pair-qr {
+	width: 220px;
+	height: 220px;
+	display: block;
+	margin: 0 auto 12px;
+}
+
 .hub-topic {
 	padding: 8px 10px;
 	border-radius: var(--r-control);
@@ -173,8 +180,463 @@
 	word-break: break-all;
 }
 
+.pair-paste {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.pair-paste .input {
+	flex: 1 1 220px;
+	min-height: 44px;
+}
+
+.pair-paste .btn {
+	min-height: 44px;
+	min-width: 88px;
+}
+
+/* Sessions: list + detail. Side by side from 768px (iPad, portrait and landscape); below, one screen at a time. */
+.sess-split {
+	display: grid;
+	gap: 16px;
+	grid-template-columns: minmax(0, 1fr);
+	align-items: start;
+}
+
+.sess-split[data-wide="true"] {
+	grid-template-columns: minmax(250px, 340px) minmax(0, 1fr);
+}
+
+.sess-list {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	min-width: 0;
+}
+
+.sess-split[data-wide="true"] .sess-list {
+	position: sticky;
+	top: calc(var(--topbar-h) + 12px);
+	max-height: calc(100dvh - var(--topbar-h) - 24px);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.sess-group {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.sess-group-title {
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--ink-2);
+	padding: 0 2px;
+}
+
+.sess-group[data-needs="true"] .sess-group-title {
+	color: var(--warn);
+}
+
+.sess-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	width: 100%;
+	min-height: 56px;
+	padding: 8px 12px;
+	text-align: left;
+	color: inherit;
+	font: inherit;
+	background: var(--card);
+	border: 1px solid var(--line-1);
+	border-radius: var(--r-card);
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.sess-group[data-needs="true"] .sess-row {
+	border-left: 3px solid var(--warn);
+}
+
+.sess-row[data-selected="true"] {
+	background: var(--raised);
+	border-color: var(--line-2);
+}
+
+.sess-row-main {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.sess-row-name {
+	font-weight: 500;
+}
+
+.sess-row-sub {
+	font-size: 12px;
+	color: var(--ink-2);
+}
+
+.sess-detail {
+	min-width: 0;
+}
+
+.sess-detail-inner {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.sess-back {
+	align-self: flex-start;
+}
+
+.sess-actionbar {
+	position: sticky;
+	top: calc(var(--topbar-h) + 8px);
+	z-index: 5;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 8px;
+	background: var(--panel);
+	border: 1px solid var(--line-1);
+	border-radius: var(--r-card);
+	box-shadow: var(--shadow-1);
+}
+
+.sess-actionbar .btn {
+	flex: 1 1 120px;
+}
+
+.sess-split .btn,
+.sess-split .input {
+	min-height: 44px;
+}
+
+.sess-detail .hub-actions .btn {
+	height: auto;
+}
+
 @media (max-width: 900px) {
 	.search .input {
 		width: min(240px, 52vw);
 	}
+}
+
+/* Start a session: its Start buttons and project search are touch targets on phones and iPads. */
+@media (pointer: coarse), (max-width: 900px) {
+	.hub-project .btn,
+	.hub-project .btn[data-size="sm"] {
+		min-height: 44px;
+		min-width: 64px;
+	}
+
+	.search .input {
+		min-height: 44px;
+	}
+}
+
+/* Pair screen when the hub auto-pairs */
+.pair-auto {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 10px;
+	font-size: 14px;
+}
+
+.pair-fallback {
+	margin-top: 14px;
+	font-size: 13px;
+}
+
+.pair-fallback summary {
+	cursor: pointer;
+	color: var(--accent);
+	width: fit-content;
+}
+
+/* Quota card on the Sessions home: compact card on iPad, one collapsible row on a phone */
+.quota-card {
+	border: 1px solid var(--line-1);
+	border-radius: var(--r-control);
+	background: var(--card);
+	padding: 8px 12px;
+	font-size: 13px;
+	min-width: 0;
+}
+
+.quota-title {
+	font-size: 13px;
+	font-weight: 600;
+	margin: 0 0 6px;
+}
+
+.quota-summary {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 10px;
+	cursor: pointer;
+	min-height: 32px;
+	font-weight: 600;
+}
+
+.quota-headline {
+	font-weight: 400;
+	color: var(--ink-2);
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.quota-list {
+	list-style: none;
+	margin: 6px 0 0;
+	padding: 0;
+	display: grid;
+	gap: 8px;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+}
+
+.quota-account {
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.quota-who {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 2px 8px;
+}
+
+.quota-provider {
+	font-weight: 600;
+}
+
+.quota-label {
+	color: var(--ink-2);
+	overflow-wrap: anywhere;
+	min-width: 0;
+}
+
+.quota-window {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 2px 8px;
+	margin: 0;
+	min-width: 0;
+}
+
+.quota-window-name {
+	min-width: 3.5em;
+	color: var(--ink-2);
+}
+
+.quota-bar {
+	flex: 0 0 72px;
+	height: 6px;
+	border-radius: 3px;
+	background: var(--line-1);
+	overflow: hidden;
+}
+
+.quota-bar > span {
+	display: block;
+	height: 100%;
+	background: var(--ok);
+}
+
+.quota-window[data-tone="warn"] .quota-bar > span {
+	background: var(--warn);
+}
+
+.quota-window[data-tone="bad"] .quota-bar > span {
+	background: var(--bad);
+}
+
+.quota-percent {
+	font-variant-numeric: tabular-nums;
+	font-weight: 600;
+}
+
+.quota-window[data-tone="bad"] .quota-percent {
+	color: var(--bad);
+}
+
+.quota-window[data-tone="warn"] .quota-percent {
+	color: var(--warn);
+}
+
+.quota-detail {
+	color: var(--ink-2);
+	font-size: 12px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.quota-note {
+	margin: 6px 0 0;
+}
+
+/* Jobs */
+.job-list,
+.gap-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.job-row,
+.gap-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px 14px;
+	padding: 10px 0;
+	border-bottom: 1px solid var(--line-1);
+	min-width: 0;
+}
+
+.job-row:last-child,
+.gap-row:last-child {
+	border-bottom: 0;
+}
+
+.job-main {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+	flex: 1 1 220px;
+}
+
+.job-label {
+	font-family: var(--font-mono);
+	font-size: 12.5px;
+	overflow-wrap: anywhere;
+}
+
+.job-schedule,
+.job-log {
+	font-size: 12px;
+	color: var(--ink-2);
+	overflow-wrap: anywhere;
+}
+
+.job-state {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 8px;
+	min-width: 0;
+}
+
+.job-row[data-status="failed"] .job-label {
+	color: var(--bad);
+}
+
+.gap-time {
+	font-variant-numeric: tabular-nums;
+}
+
+.job-counts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+/* Sessions: the plan review panel */
+.sess-row-badges {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 4px;
+	flex: none;
+}
+
+.plan-review .card-body,
+.sess-panel .card-body {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.plan-text {
+	margin: 0;
+	padding: 10px 12px;
+	max-height: 50vh;
+	overflow: auto;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font-family: var(--font-mono, ui-monospace, monospace);
+	font-size: 12.5px;
+	line-height: 1.5;
+	color: var(--ink-2);
+	background: var(--panel-2, var(--panel));
+	border: 1px solid var(--line-1);
+	border-radius: var(--r-control);
+}
+
+.plan-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.plan-field select.input,
+.plan-field textarea.input {
+	width: 100%;
+	font: inherit;
+}
+
+.plan-actions .btn {
+	flex: 1 1 160px;
+}
+
+/* Sessions: the terminal panel */
+.term-toggle {
+	align-self: flex-start;
+}
+
+.term-screen {
+	margin: 0;
+	padding: 8px 10px;
+	max-height: 60vh;
+	overflow: auto;
+	white-space: pre;
+	font-family: var(--font-mono, ui-monospace, monospace);
+	font-size: 11.5px;
+	line-height: 1.35;
+	color: var(--ink-2);
+	background: var(--panel-2, var(--panel));
+	border: 1px solid var(--line-1);
+	border-radius: var(--r-control);
+}
+
+.term-keys {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+	gap: 6px;
+}
+
+.term-line {
+	font-family: var(--font-mono, ui-monospace, monospace);
+	overflow-wrap: anywhere;
 }

@@ -8,5 +8,12 @@ if (!root) throw new Error("missing #root");
 // Registered before the app's own hash listener: a pairing link opened in a tab already showing the
 // dashboard only changes the fragment.
 window.addEventListener("hashchange", () => redeemPairingLink());
-// A pairing link reloads the page once the hub has set its cookie; nothing renders until then.
-if (!redeemPairingLink()) createRoot(root).render(<App />);
+let rendered = false;
+const show = () => {
+	if (rendered) return;
+	rendered = true;
+	createRoot(root).render(<App />);
+};
+// A pairing link reloads the page once the hub accepted it and set its cookie; nothing renders until then. A
+// refused link never reloads: the app renders in place and the Pair screen shows why.
+if (!redeemPairingLink(show)) show();

@@ -1,5 +1,5 @@
-import { Eye, Pencil, Play, Power, Square, SquareTerminal } from "lucide-react";
-import { type FormEvent, useMemo, useState } from "react";
+import { ArrowLeft, Eye, Pencil, Play, Power, Square, SquareTerminal } from "lucide-react";
+import { type FormEvent, useMemo, useState, useSyncExternalStore } from "react";
 import {
 	forceKillHubSession,
 	getHubLink,
@@ -7,6 +7,7 @@ import {
 	getHubSessions,
 	type HubProject,
 	type HubSession,
+	type HubSessions,
 	killHubSession,
 	type HubStarted,
 	renameHubSession,
@@ -14,6 +15,7 @@ import {
 	stopHubSession,
 } from "../data/hub";
 import { useQuery } from "../data/query";
+import { needsYou, RESTART_FOR_PLAN, RESTART_FOR_PLAN_OR_TERMINAL, terminalWaiting } from "../data/plan-review";
 import {
 	herdrPlace,
 	killConfirmMatches,
@@ -24,16 +26,25 @@ import {
 } from "../data/session-controls";
 import { Badge, Card, EmptyState, PageHeader, QueryView, SearchInput, TableSkeleton, type Tone } from "../ui";
 import { ago, Help, type Notice, NoticeLine } from "./hub-common";
+import { PlanReviewPanel } from "./PlanReviewPanel";
+import { QuotaCard } from "./QuotaCard";
+import { SessionCommandsPanel } from "./SessionCommandsPanel";
+import { TerminalPanel } from "./TerminalPanel";
 
 export interface SessionsRouteProps {
 	active: boolean;
+	/** Session named by the URL (`#/sessions/<sessionId>`), or null for the list. */
+	selected: string | null;
+	onSelect: (key: string | null) => void;
 }
 
 const REFRESH_MS = 5000;
 const MAX_PROJECTS = 60;
+const TERMINAL_WAITING_LABEL = "Waiting in terminal";
+const TERMINAL_WAITING_TITLE = "detected from the screen";
 
 function sessionState(s: HubSession): { label: string; tone: Tone } {
-	if (s.inputRequired) return { label: "Needs you", tone: "warn" };
+	if (needsYou(s)) return { label: "Needs you", tone: "warn" };
 	if (s.busy === true) return { label: "Working", tone: "accent" };
 	// Its own turn ended, but subagents it started are still running: the task isn't done.
 	const agents = s.agentsRunning ?? 0;
@@ -52,9 +63,7 @@ const RELAY_LABEL: Record<NonNullable<HubSession["relay"]>, { label: string; ton
 function sessionOrder(a: HubSession, b: HubSession): number {
 	const working = (s: HubSession) => Number(s.busy === true || (s.agentsRunning ?? 0) > 0);
 	return (
-		Number(b.inputRequired ?? false) - Number(a.inputRequired ?? false) ||
-		working(b) - working(a) ||
-		(b.startedAt ?? 0) - (a.startedAt ?? 0)
+		Number(needsYou(b)) - Number(needsYou(a)) || working(b) - working(a) || (b.startedAt ?? 0) - (a.startedAt ?? 0)
 	);
 }
 
@@ -80,12 +89,54 @@ async function openSession(instanceId: string, view: boolean): Promise<void> {
 	}
 }
 
-export function SessionsRoute({ active }: SessionsRouteProps) {
+const WIDE_QUERY = "(min-width: 768px)";
+
+/** iPad-sized and larger: list and detail side by side. Below it they are separate screens. */
+function useWide(): boolean {
+	return useSyncExternalStore(
+		onChange => {
+			const media = window.matchMedia(WIDE_QUERY);
+			media.addEventListener("change", onChange);
+			return () => media.removeEventListener("change", onChange);
+		},
+		() => window.matchMedia(WIDE_QUERY).matches,
+	);
+}
+
+/** What `#/sessions/<id>` names: omp's session id (the one alerts carry), else the Collab instance. */
+function sessionKey(s: HubSession): string {
+	return s.sessionId ?? s.instanceId;
+}
+
+function projectFolder(s: HubSession): string {
+	return (s.cwd ?? "").split("/").filter(Boolean).pop() ?? "omp session";
+}
+
+/** "waiting 5m", or "waiting (age unknown)" when the hub did not see the wait begin (it restarted since). */
+function waitingText(s: HubSession, now: number): string {
+	// A plan review carries the time it opened, so its wait is known even when the hub restarted since.
+	const known = s.waitingObserved || (!s.inputRequired && (s.planReview || terminalWaiting(s)));
+	if (!known || !s.waitingSince) return "waiting (age unknown)";
+	return `waiting ${ago(s.waitingSince, now).replace(" ago", "").replace("just now", "<1m")}`;
+}
+
+/** Waiting longest first; sessions whose wait the hub only noticed after a restart sort by when it noticed. */
+function needsOrder(a: HubSession, b: HubSession): number {
+	return (
+		(a.waitingSince ?? Number.MAX_SAFE_INTEGER) - (b.waitingSince ?? Number.MAX_SAFE_INTEGER) ||
+		(a.startedAt ?? 0) - (b.startedAt ?? 0)
+	);
+}
+
+export function SessionsRoute({ active, selected, onSelect }: SessionsRouteProps) {
 	const sessions = useQuery(["hub-sessions"], ({ signal }) => getHubSessions(signal), {
 		enabled: active,
 		pollMs: REFRESH_MS,
 	});
 	const [notice, setNotice] = useState<Notice | null>(null);
+	const wide = useWide();
+	// On a phone a selected session is a screen of its own: no page header, help or Start card around it.
+	const detailScreen = !wide && selected !== null;
 
 	const open = (instanceId: string, view: boolean) => {
 		setNotice(null);
@@ -97,58 +148,84 @@ export function SessionsRoute({ active }: SessionsRouteProps) {
 
 	return (
 		<div className="page">
-			<PageHeader
-				title="Sessions"
-				description={
-					sessions.data
-						? `Every omp session on this Mac that shares through Collab. Updated ${new Date(sessions.data.now).toLocaleTimeString()} · refreshes every 5 seconds.`
-						: "Every omp session on this Mac that shares through Collab."
-				}
-			/>
-			<Help summary="What can I do here?">
-				<p>
-					<b>Needs you</b> means it is waiting for your answer; <b>Working</b> means a turn is running (or
-					subagents it started still are); <b>Idle</b> means it is waiting for a prompt.
-				</p>
-				<p>
-					<b>Open &amp; control</b> opens the session in a new tab where you can read it, send prompts, answer its
-					questions, approve tools and stop a running turn. <b>Watch</b> opens the same view read-only: you see
-					everything but can't type or press anything that changes the session. Use it when you only want to look,
-					or to show someone.
-				</p>
-				<p>
-					<b>Stop</b> (shown while it works) interrupts the running turn, like pressing Esc at the Mac; the session
-					stays open. <b>Rename</b> changes the session's name. <b>Kill</b> ends the session's omp process, and any
-					subagents it is running stop with it. Its transcript stays on the Mac: resume it there later with{" "}
-					<code>omp --resume</code>. Every Stop, Rename and Kill is written to the hub's audit log.
-				</p>
-				<p>
-					Stop and Rename need a small omp extension that sessions load when they start. A session that was already
-					running when it was installed shows "Restart this session to enable Stop and Rename"; Kill works for
-					every session.
-				</p>
-				<p>
-					Both Open and Watch use this Mac's own relay, reachable only inside your tailnet and only from browsers
-					you paired. The conversation is end-to-end encrypted between the session and your browser; the relay only
-					passes sealed messages along.
-				</p>
-				<p>
-					<b>Still on the public relay</b>: the session started before the switch to our relay and still shares
-					through omp's public server (my.omp.sh). Its links are never opened from here, so its Open and Watch
-					buttons are off. To fix it, at the Mac in that session run <code>/collab stop</code>, then{" "}
-					<code>/collab</code>; it moves to this Mac's relay and the buttons come back within a few seconds.
-				</p>
-				<p>
-					The model, thinking level and plan mode can't be changed from here yet; change them at the Mac. Each link
-					is fetched fresh when you click, so it always points at the session's current room.
-				</p>
-			</Help>
+			{!detailScreen && (
+				<PageHeader
+					title="Sessions"
+					description={
+						sessions.data
+							? `Every omp session on this Mac that shares through Collab. Updated ${new Date(sessions.data.now).toLocaleTimeString()} · refreshes every 5 seconds.`
+							: "Every omp session on this Mac that shares through Collab."
+					}
+				/>
+			)}
+			{!detailScreen && (
+				<Help summary="What can I do here?">
+					<p>
+						<b>Needs you</b> means it is waiting for your answer; <b>Working</b> means a turn is running (or
+						subagents it started still are); <b>Idle</b> means it is waiting for a prompt. Needs you sessions are
+						listed first, longest waiting on top. The hub only shows them: answer or approve inside the session
+						with Open &amp; control.
+					</p>
+					<p>
+						A <b>Plan to approve</b> badge means the session finished a plan and waits for your answer. Open the
+						session here to read the plan and answer with the same choices the terminal offers: approve and
+						execute, approve and compact, approve and keep context, refine with feedback, or save and quit. Edits
+						made inside the terminal's review aren't shown here, and sessions started before plan support was
+						installed need a restart first.
+					</p>
+					<p>
+						<b>Open &amp; control</b> opens the session in a new tab where you can read it, send prompts, answer
+						its questions, approve tools and stop a running turn. <b>Watch</b> opens the same view read-only: you
+						see everything but can't type or press anything that changes the session. Use it when you only want to
+						look, or to show someone.
+					</p>
+					<p>
+						<b>Stop</b> (shown while it works) interrupts the running turn, like pressing Esc at the Mac; the
+						session stays open. <b>Rename</b> changes the session's name. <b>Kill</b> ends the session's omp
+						process, and any subagents it is running stop with it. Its transcript stays on the Mac: resume it
+						there later with <code>omp --resume</code>. Every Stop, Rename and Kill is written to the hub's audit
+						log.
+					</p>
+					<p>
+						Stop and Rename need a small omp extension that sessions load when they start. A session that was
+						already running when it was installed shows "Restart this session to enable Stop and Rename"; Kill
+						works for every session.
+					</p>
+					<p>
+						Both Open and Watch use this Mac's own relay, reachable only inside your tailnet and only from
+						browsers you paired. The conversation is end-to-end encrypted between the session and your browser;
+						the relay only passes sealed messages along.
+					</p>
+					<p>
+						<b>Still on the public relay</b>: the session started before the switch to our relay and still shares
+						through omp's public server (my.omp.sh). Its links are never opened from here, so its Open and Watch
+						buttons are off. To fix it, at the Mac in that session run <code>/collab stop</code>, then{" "}
+						<code>/collab</code>; it moves to this Mac's relay and the buttons come back within a few seconds.
+					</p>
+					<p>
+						The <b>Session</b> card changes the model, thinking level and plan, goal and loop mode, and compacts
+						the context; each change asks first and is written to the audit log (never the instructions or
+						objective text). A session started before the session-control plugin was updated shows a restart hint
+						instead. Each link is fetched fresh when you click, so it always points at the session's current room.
+					</p>
+					<p>
+						<b>Waiting in terminal</b> means the hub read a dialog off the session's terminal screen (a Yes/No
+						question, a list to pick from, a text prompt or a sign-in wait) that omp does not share through Open
+						&amp; control. It is detected from the screen, so it can be late or, rarely, wrong. The{" "}
+						<b>Terminal</b> panel answers it: turn on Control terminal to read the screen, then use the key pad or
+						type one line. Text goes to whatever has focus in the terminal, and digits can pick options. It locks
+						again when you switch session, leave the page or anything fails. If it says delivery is uncertain,
+						read the screen before sending again: nothing is ever resent automatically.
+					</p>
+				</Help>
+			)}
 
 			<NoticeLine notice={notice} />
+			{!detailScreen && <QuotaCard active={active} wide={wide} />}
 			<QueryView
 				query={sessions}
 				skeleton={<TableSkeleton rows={3} />}
-				isEmpty={data => data.sessions.length === 0}
+				isEmpty={data => data.sessions.length === 0 && !selected}
 				empty={
 					<Card>
 						<EmptyState
@@ -163,46 +240,187 @@ export function SessionsRoute({ active }: SessionsRouteProps) {
 				}
 			>
 				{data => (
-					<div className="hub-sessions">
-						{[...data.sessions].sort(sessionOrder).map((s, i) => (
-							<SessionCard
-								key={s.instanceId}
-								session={s}
-								index={i}
-								now={data.now}
-								onOpen={open}
-								onChanged={sessions.refetch}
-								onEnded={setNotice}
-							/>
-						))}
-					</div>
+					<SessionsView
+						data={data}
+						selected={selected}
+						wide={wide}
+						onSelect={onSelect}
+						onOpen={open}
+						onChanged={sessions.refetch}
+						onEnded={setNotice}
+						active={active}
+					/>
 				)}
 			</QueryView>
 
-			<StartSession active={active} onStarted={sessions.refetch} />
+			{!detailScreen && <StartSession active={active} onStarted={sessions.refetch} />}
 		</div>
 	);
 }
 
-function SessionCard({
-	session: s,
-	index,
-	now,
+function SessionsView({
+	data,
+	selected,
+	wide,
+	onSelect,
 	onOpen,
 	onChanged,
 	onEnded,
+	active,
 }: {
-	session: HubSession;
-	index: number;
-	now: number;
+	data: HubSessions;
+	selected: string | null;
+	wide: boolean;
+	onSelect: (key: string | null) => void;
 	onOpen: (instanceId: string, view: boolean) => void;
 	onChanged: () => void;
 	onEnded: (notice: Notice) => void;
+	active: boolean;
+}) {
+	const needs = useMemo(() => data.sessions.filter(needsYou).sort(needsOrder), [data.sessions]);
+	const rest = useMemo(() => data.sessions.filter(s => !needsYou(s)).sort(sessionOrder), [data.sessions]);
+	const current = selected ? data.sessions.find(s => sessionKey(s) === selected) : undefined;
+	const showList = wide || !selected;
+	const showDetail = wide || selected !== null;
+
+	return (
+		<div className="sess-split" data-wide={wide}>
+			{showList && (
+				<nav className="sess-list" aria-label="Sessions">
+					{data.sessions.length === 0 && <p className="micro">No live omp sessions.</p>}
+					{needs.length > 0 && (
+						<div className="sess-group" data-needs="true">
+							<h3 className="sess-group-title">Needs you · {needs.length}</h3>
+							{needs.map(s => (
+								<SessionRow
+									key={s.instanceId}
+									session={s}
+									now={data.now}
+									selected={sessionKey(s) === selected}
+									onSelect={onSelect}
+								/>
+							))}
+						</div>
+					)}
+					{rest.length > 0 && (
+						<div className="sess-group">
+							{needs.length > 0 && <h3 className="sess-group-title">Other sessions</h3>}
+							{rest.map(s => (
+								<SessionRow
+									key={s.instanceId}
+									session={s}
+									now={data.now}
+									selected={sessionKey(s) === selected}
+									onSelect={onSelect}
+								/>
+							))}
+						</div>
+					)}
+				</nav>
+			)}
+			{showDetail && (
+				<section className="sess-detail" aria-label="Session">
+					{current ? (
+						<SessionDetail
+							key={current.instanceId}
+							session={current}
+							now={data.now}
+							showBack={!wide}
+							onBack={() => onSelect(null)}
+							onOpen={onOpen}
+							onChanged={onChanged}
+							onEnded={onEnded}
+							active={active}
+						/>
+					) : selected ? (
+						<Card>
+							<EmptyState
+								title="Session ended"
+								hint="It is no longer running, or it stopped sharing. Its transcript stays on the Mac."
+							/>
+							<div className="hub-actions">
+								<button type="button" className="btn" data-variant="accent" onClick={() => onSelect(null)}>
+									<ArrowLeft size={14} /> Back to sessions
+								</button>
+							</div>
+						</Card>
+					) : (
+						<Card>
+							<EmptyState title="Pick a session" hint="Its details and actions show here." />
+						</Card>
+					)}
+				</section>
+			)}
+		</div>
+	);
+}
+
+function SessionRow({
+	session: s,
+	now,
+	selected,
+	onSelect,
+}: {
+	session: HubSession;
+	now: number;
+	selected: boolean;
+	onSelect: (key: string) => void;
+}) {
+	const state = sessionState(s);
+	const sub = [s.workspace ?? "Other", projectFolder(s), needsYou(s) ? waitingText(s, now) : null].filter(Boolean);
+	return (
+		<button
+			type="button"
+			className="sess-row"
+			data-selected={selected}
+			aria-current={selected ? "true" : undefined}
+			onClick={() => onSelect(sessionKey(s))}
+		>
+			<span className="sess-row-main">
+				<span className="sess-row-name truncate">{sessionDisplayName(s)}</span>
+				<span className="sess-row-sub truncate">{sub.join(" · ")}</span>
+			</span>
+			<span className="sess-row-badges">
+				<Badge tone={state.tone}>{state.label}</Badge>
+				{s.planReview && <Badge tone="accent">Plan to approve</Badge>}
+				{terminalWaiting(s) && (
+					<Badge tone="warn" title={TERMINAL_WAITING_TITLE}>
+						{TERMINAL_WAITING_LABEL}
+					</Badge>
+				)}
+			</span>
+		</button>
+	);
+}
+
+function SessionDetail({
+	session: s,
+	now,
+	showBack,
+	onBack,
+	onOpen,
+	onChanged,
+	onEnded,
+	active,
+}: {
+	session: HubSession;
+	now: number;
+	showBack: boolean;
+	onBack: () => void;
+	onOpen: (instanceId: string, view: boolean) => void;
+	onChanged: () => void;
+	onEnded: (notice: Notice) => void;
+	active: boolean;
 }) {
 	const state = sessionState(s);
 	const relay = RELAY_LABEL[s.relay ?? "unknown"];
 	const isPublic = s.relay === "public";
 	const place = herdrPlace(s);
+	const waiting = terminalWaiting(s);
+	const terminalOn = s.terminal?.available === true && Boolean(s.sessionId);
+	const ctl = useSessionControlState(s, onChanged, onEnded);
+	/** Counts successful terminal sends: the Session card re-reads what the session reports after each. */
+	const [sent, setSent] = useState(0);
 	const facts = [
 		s.model?.id,
 		s.startedAt ? `started ${ago(s.startedAt, now)}` : null,
@@ -210,25 +428,13 @@ function SessionCard({
 		s.pid !== undefined ? `pid ${s.pid}` : null,
 	].filter(Boolean);
 	return (
-		<Card
-			index={index}
-			title={<span className="truncate">{sessionDisplayName(s)}</span>}
-			description={(s.cwd ?? "").replace(/^\/Users\/[^/]+/, "~")}
-			actions={<Badge tone={state.tone}>{state.label}</Badge>}
-		>
-			<div className="hub-session-meta">
-				<Badge tone={relay.tone}>{relay.label}</Badge>
-				{s.relayConnected === false && <Badge tone="bad">Relay offline</Badge>}
-				{place && <Badge tone="neutral">{place}</Badge>}
-				<span className="micro">{facts.join(" · ")}</span>
-			</div>
-			{isPublic && (
-				<p className="hub-warn">
-					Still on the public relay, so it can't be opened from here. Fix: in that session run{" "}
-					<code>/collab stop</code>, then <code>/collab</code>.
-				</p>
+		<div className="sess-detail-inner">
+			{showBack && (
+				<button type="button" className="btn sess-back" data-variant="ghost" onClick={onBack}>
+					<ArrowLeft size={16} /> Sessions
+				</button>
 			)}
-			<div className="hub-actions">
+			<div className="sess-actionbar">
 				<button
 					type="button"
 					className="btn"
@@ -248,24 +454,67 @@ function SessionCard({
 				>
 					<Eye size={14} /> Watch
 				</button>
+				{ctl.controls.showStop && (
+					<button
+						type="button"
+						className="btn"
+						disabled={!ctl.controls.stop.enabled || ctl.pending !== null}
+						title={ctl.controls.stop.reason ?? "Interrupt the running turn; the session stays open"}
+						onClick={ctl.stop}
+					>
+						<Square size={13} /> {ctl.pending === "Stop" ? "Stopping…" : "Stop"}
+					</button>
+				)}
 			</div>
-			<SessionControlsBar session={s} onChanged={onChanged} onEnded={onEnded} />
-		</Card>
+			<Card
+				title={<span className="truncate">{sessionDisplayName(s)}</span>}
+				description={(s.cwd ?? "").replace(/^\/Users\/[^/]+/, "~")}
+				actions={<Badge tone={state.tone}>{state.label}</Badge>}
+			>
+				<div className="hub-session-meta">
+					<Badge tone="neutral">{s.workspace ?? "Other"}</Badge>
+					{needsYou(s) && <Badge tone="warn">{waitingText(s, now)}</Badge>}
+					{s.planReview && <Badge tone="accent">Plan to approve</Badge>}
+					{waiting && (
+						<Badge tone="warn" title={TERMINAL_WAITING_TITLE}>
+							{TERMINAL_WAITING_LABEL}
+						</Badge>
+					)}
+					<Badge tone={relay.tone}>{relay.label}</Badge>
+					{s.relayConnected === false && <Badge tone="bad">Relay offline</Badge>}
+					{place && <Badge tone="neutral">{place}</Badge>}
+					<span className="micro">{facts.join(" · ")}</span>
+				</div>
+				{s.inputRequired && (
+					<p className="micro">Answer or approve inside the session: choose Open &amp; control.</p>
+				)}
+				{waiting && (
+					<p className="micro">
+						Waiting in terminal: <span className="term-line">{waiting.line}</span>. Answer it in the Terminal
+						panel below, or choose Open &amp; control.
+					</p>
+				)}
+				{s.planControl === "restart_needed" && (
+					<p className="hub-warn">{terminalOn ? RESTART_FOR_PLAN_OR_TERMINAL : RESTART_FOR_PLAN}</p>
+				)}
+				{isPublic && (
+					<p className="hub-warn">
+						Still on the public relay, so it can't be opened from here. Fix: in that session run{" "}
+						<code>/collab stop</code>, then <code>/collab</code>.
+					</p>
+				)}
+				<ManagePanel session={s} ctl={ctl} />
+			</Card>
+			{s.planControl === "supported" && s.sessionId && <PlanReviewPanel session={s} onChanged={onChanged} />}
+			{s.sessionId && <SessionCommandsPanel session={s} onChanged={onChanged} refreshToken={sent} active={active} />}
+			{terminalOn && <TerminalPanel session={s} active={active} onSent={() => setSent(n => n + 1)} />}
+		</div>
 	);
 }
 
 type Panel = "rename" | "kill" | null;
 
-/** Stop, Rename and Kill (with Force kill only after a Kill that did not end the session). */
-function SessionControlsBar({
-	session: s,
-	onChanged,
-	onEnded,
-}: {
-	session: HubSession;
-	onChanged: () => void;
-	onEnded: (notice: Notice) => void;
-}) {
+function useSessionControlState(s: HubSession, onChanged: () => void, onEnded: (notice: Notice) => void) {
 	const controls = sessionControls(s);
 	const name = sessionDisplayName(s);
 	const [panel, setPanel] = useState<Panel>(null);
@@ -357,21 +606,55 @@ function SessionControlsBar({
 		if (next === "kill") setTyped("");
 	};
 
+	return {
+		controls,
+		name,
+		panel,
+		setPanel,
+		pending,
+		notice,
+		newName,
+		setNewName,
+		typed,
+		setTyped,
+		forceOffered,
+		forceConfirming,
+		setForceConfirming,
+		stop,
+		rename,
+		kill,
+		forceKill,
+		toggle,
+	};
+}
+
+type Controls = ReturnType<typeof useSessionControlState>;
+
+/** Rename and Kill (with Force kill only after a Kill that did not end the session); Stop lives in the action bar. */
+function ManagePanel({ session: s, ctl }: { session: HubSession; ctl: Controls }) {
+	const {
+		controls,
+		name,
+		panel,
+		setPanel,
+		pending,
+		notice,
+		newName,
+		setNewName,
+		typed,
+		setTyped,
+		forceOffered,
+		forceConfirming,
+		setForceConfirming,
+		rename,
+		kill,
+		forceKill,
+		toggle,
+	} = ctl;
 	const extensionReason = controls.rename.enabled ? null : controls.rename.reason;
 	return (
 		<div className="hub-controls">
 			<div className="hub-actions">
-				{controls.showStop && (
-					<button
-						type="button"
-						className="btn"
-						disabled={!controls.stop.enabled || pending !== null}
-						title={controls.stop.reason ?? "Interrupt the running turn; the session stays open"}
-						onClick={stop}
-					>
-						<Square size={13} /> {pending === "Stop" ? "Stopping…" : "Stop"}
-					</button>
-				)}
 				<button
 					type="button"
 					className="btn"

@@ -8,20 +8,33 @@ export interface HashRoute {
 	range: TimeRange;
 	/** Deep-linked trace session file (traces only). */
 	session: string | null;
+	/** Selected hub session (`#/sessions/<sessionId>`), sessions page only. */
+	hubSession: string | null;
 }
 
 export function parseHash(hash: string): HashRoute {
-	const [pathPart, queryPart] = hash.replace(/^#\/?/, "").split("?");
+	const [fullPath, queryPart] = hash.replace(/^#\/?/, "").split("?");
+	const [pathPart, ...rest] = fullPath.split("/");
 	const section = (SECTIONS as readonly string[]).includes(pathPart) ? (pathPart as DashboardSection) : "overview";
+	let hubSession: string | null = null;
+	if (section === "sessions" && rest.length > 0 && rest.join("/") !== "") {
+		const raw = rest.join("/");
+		try {
+			hubSession = decodeURIComponent(raw);
+		} catch {
+			hubSession = raw;
+		}
+	}
 	const params = new URLSearchParams(queryPart ?? "");
 	const rangeParam = params.get("range");
 	const range = (TIME_RANGES as readonly string[]).includes(rangeParam ?? "") ? (rangeParam as TimeRange) : "24h";
-	return { section, range, session: params.get("s") };
+	return { section, range, session: params.get("s"), hubSession };
 }
 
-export function buildHash({ section, range, session }: HashRoute): string {
+export function buildHash({ section, range, session, hubSession }: HashRoute): string {
 	const sessionPart = session ? `&s=${encodeURIComponent(session)}` : "";
-	return `#/${section}?range=${range}${sessionPart}`;
+	const selected = section === "sessions" && hubSession ? `/${encodeURIComponent(hubSession)}` : "";
+	return `#/${section}${selected}?range=${range}${sessionPart}`;
 }
 
 /**
@@ -54,11 +67,21 @@ export function useHashRoute() {
 	const setSection = useCallback(
 		(section: DashboardSection) =>
 			// The deep-linked session only applies to the traces view.
-			navigate({ ...route, section, session: section === "traces" ? route.session : null }),
+			navigate({
+				...route,
+				section,
+				session: section === "traces" ? route.session : null,
+				hubSession: null,
+			}),
 		[route, navigate],
 	);
 	const setRange = useCallback((range: TimeRange) => navigate({ ...route, range }), [route, navigate]);
 	const setSession = useCallback((session: string | null) => navigate({ ...route, session }), [route, navigate]);
 
-	return { ...route, setSection, setRange, setSession };
+	const setHubSession = useCallback(
+		(hubSession: string | null) => navigate({ ...route, section: "sessions", session: null, hubSession }),
+		[route, navigate],
+	);
+
+	return { ...route, setSection, setRange, setSession, setHubSession };
 }

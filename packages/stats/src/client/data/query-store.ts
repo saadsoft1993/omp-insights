@@ -106,3 +106,10 @@ export function releaseQuery(key: string, request: Inflight): void {
 	if (inflight.get(key) === request) inflight.delete(key);
 	request.controller.abort();
 }
+
+/** Forget every cached result (tests share one process, so a previous test's data would otherwise show). */
+export function clearQueryCache(): void {
+	defaultBucket.entries.clear();
+	traceBucket.entries.clear();
+	requestBucket.entries.clear();
+}

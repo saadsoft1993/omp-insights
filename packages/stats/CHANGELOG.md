@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added a Session card and a Terminal panel to the Sessions page. The card changes a session's model and thinking level, enters or exits plan mode, starts a goal with an objective (and pauses, resumes or drops it), exits a loop and compacts with optional instructions, through `GET .../session-info` and `POST .../command`; every change asks first, runs one at a time and shows its own message per error code, and a session on an older plugin shows a restart hint. The Terminal panel (only when the hub reports the session's terminal) stays locked until "Control terminal" is turned on, shows the screen (polled 1.5 s after the previous read, paused while the tab is hidden, with a scrolled-view warning), and has a nine-key pad and a one-line text field (`POST .../keys` with a fresh request id per send, one send at a time, never retried; "Delivery uncertain" asks you to read the screen first). It locks again on a session change, on any error and when you leave the page. Sessions that wait in a terminal dialog show "Waiting in terminal" (detected from the screen) under Needs you.
 - Added an Accounts page (`g a`) and `GET /api/stats/accounts`: requests, tokens and cost per stored credential, merged per account (same provider, email and organization, including a second login slot such as `anthropic-2` whose account id resolves to the same email and organization), with active/idle/blocked/needs-login status, share of the provider's traffic and the latest quota readings. Each provider's total for the range, the same number the Providers page shows, is split into requests on accounts and requests not tied to an account (background calls such as titles, memory and judges, API keys, gateways). Already-ingested sessions are re-read once on the next sync to attribute history.
 - Added a traffic split to the Accounts page and an Accounts card on Overview: per provider, the measured share of each account's requests over the last 15 minutes, which account served the first request of recent new main sessions and when that last changed in range (historical observations; sessions can be rotated afterwards), plus a stacked traffic-by-account chart backed by `GET /api/stats/accounts/flow`.
 - Added a Live page (`g v`) and `GET /api/stats/live`: sessions with a completed request in the last five minutes or subagents worth listing, each with the last tool it started and its subagents (running, done and waiting, finished, or silent, with current tool, accounts and rate), the accounts and `models.yml` gateways they send to, a "No account recorded" node per provider split into housekeeping calls (by `model_usage` purpose) and ordinary turns, lines weighted by the last minute's rate with dots at that rate, and the latest 25 requests. Each poll also re-syncs recently written transcripts, so it stays within a few seconds of the transcripts. Stored requests now keep the purpose of `model_usage` entries, and ingest keeps each transcript's last tool name and intent, exit and turn state (never tool arguments); already-ingested sessions are re-read once on the next sync to fill both in.
@@ -11,6 +12,28 @@
 ### Changed
 
 - The session watcher now syncs a written transcript within 2 seconds even while sessions keep writing; before, every new write pushed the sync back.
+
+## [18.20.1] - 2026-11-14
+
+### Fixed
+
+- Fixed Traces tab timing so background jobs show their actual completion times, including accurate idle periods and turn durations.
+- Fixed per-model message counts on the Frustration page to include all answered messages.
+- Improved dashboard responsiveness by keeping other pages and Live status available while Spotlight rebuilds.
+- Fixed daily usage charts to group activity by the user's local calendar day instead of UTC.
+
+## [18.20.0] - 2026-11-12
+
+### Fixed
+
+- Spotlight stats count a `;`/`,` path `read` once with all its parts, and count a later read of any of its files as a re-read or a needed line ([#18713](https://github.com/can1357/oh-my-pi/pull/18713) by [@eggpeat](https://github.com/eggpeat))
+
+## [18.18.9] - 2026-11-11
+
+### Added
+
+- The Spotlight dashboard's Overhead card breaks failed results down by cause (not signed in, timeout, rate limited, HTTP status, …) and, when results failed for lack of a Stencil sign-in, says how to sign in ([#18850](https://github.com/can1357/oh-my-pi/pull/18850) by [@wolfiesch](https://github.com/wolfiesch))
+
 ## [18.18.4] - 2026-11-09
 
 ### Fixed

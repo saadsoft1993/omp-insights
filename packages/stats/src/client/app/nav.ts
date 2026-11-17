@@ -1,6 +1,7 @@
 import {
 	Activity,
 	BellRing,
+	CalendarClock,
 	CircleAlert,
 	Coins,
 	Cpu,
@@ -8,6 +9,7 @@ import {
 	Frown,
 	LayoutGrid,
 	type LucideIcon,
+	MonitorSmartphone,
 	PlugZap,
 	Radio,
 	ScanSearch,
@@ -23,6 +25,8 @@ export type DashboardSection =
 	| "sessions"
 	| "relay"
 	| "alerts"
+	| "jobs"
+	| "devices"
 	| "overview"
 	| "models"
 	| "providers"
@@ -60,6 +64,8 @@ export const NAV: readonly NavGroup[] = [
 			{ id: "sessions", label: "Sessions", icon: SquareTerminal, hotkey: "n" },
 			{ id: "relay", label: "Relay", icon: Waypoints, hotkey: "y" },
 			{ id: "alerts", label: "Alerts", icon: BellRing, hotkey: "b" },
+			{ id: "jobs", label: "Jobs", icon: CalendarClock, hotkey: "w" },
+			{ id: "devices", label: "Devices", icon: MonitorSmartphone, hotkey: "d" },
 		],
 	},
 	{

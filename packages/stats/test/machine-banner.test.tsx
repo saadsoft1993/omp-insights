@@ -63,17 +63,16 @@ describe("machine view", () => {
 
 describe("MachineBanner", () => {
 	function stubFetch(respond: () => Response): void {
-		installGlobal(
-			"fetch",
-			vi.fn(async () => respond()),
-		);
+		installGlobal("fetch", vi.fn(async () => respond()));
 	}
 
 	// The query cache is module-global: the failing answer goes first so the cached name cannot leak into it.
 	it("renders nothing when the hub has no machine endpoint or no name", async () => {
 		stubFetch(() => Response.json({ error: "not found" }, { status: 404 }));
 		const { root: view, container } = mount();
-		await act(async () => view.render(<MachineBanner />));
+		await act(async () =>
+			view.render(<MachineBanner />),
+		);
 		await act(async () => {
 			await Bun.sleep(10);
 		});
@@ -83,7 +82,9 @@ describe("MachineBanner", () => {
 	it("shows the machine name the hub reports", async () => {
 		stubFetch(() => Response.json({ name: "Dev Mac mini" }));
 		const { root: view, container } = mount();
-		await act(async () => view.render(<MachineBanner />));
+		await act(async () =>
+			view.render(<MachineBanner />),
+		);
 		await act(async () => {
 			await Bun.sleep(10);
 		});

@@ -1,4 +1,4 @@
-import { markUnpaired } from "./data/pairing";
+import { noteUnauthorized } from "./data/pairing";
 import type {
 	AccountDashboardStats,
 	AccountFlowStats,
@@ -30,12 +30,15 @@ const API_BASE = "/api";
 export class ApiError extends Error {
 	status: number;
 	endpoint: string;
+	/** The server's machine-readable `code` (the hub sends one with its 4xx/5xx), when the body had one. */
+	code: string | null;
 
-	constructor(status: number, endpoint: string, message: string) {
+	constructor(status: number, endpoint: string, message: string, code: string | null = null) {
 		super(message);
 		this.name = "ApiError";
 		this.status = status;
 		this.endpoint = endpoint;
+		this.code = code;
 	}
 }
 
@@ -75,7 +78,7 @@ async function fetchJson<T>(endpoint: string, options?: RequestInit, previous?: 
 	if (res.status === 304 && etag) return previous as T;
 	if (!res.ok) {
 		// The hub fronting this dashboard answers 401 until the browser is paired.
-		if (res.status === 401) markUnpaired();
+		if (res.status === 401) await noteUnauthorized(res);
 		throw new ApiError(res.status, endpoint, await readErrorMessage(res, endpoint));
 	}
 	const data = (await res.json()) as T;

@@ -1,5 +1,7 @@
 import { Menu } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
+import { getHubVersion } from "../data/hub";
+import { useQuery } from "../data/query";
 import { rangeMeta, TIME_RANGES } from "../data/range";
 import { useLiveStatus } from "../data/live";
 import type { TimeRange } from "../types";
@@ -116,6 +118,7 @@ export function Shell({ section, onSectionChange, range, onRangeChange, children
 					</div>
 				))}
 				<div className="sidebar-foot micro">
+					<HubVersionLine />
 					<span>
 						<span className="kbd">1</span>–<span className="kbd">6</span> range
 					</span>
@@ -173,4 +176,18 @@ function useShortcuts(onSection: (section: DashboardSection) => void, onRange: (
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
 	}, [onSection, onRange]);
+}
+
+/** Which hub commit and UI build is live: how a deploy is confirmed. */
+function HubVersionLine() {
+	const version = useQuery(["hub-version"], ({ signal }) => getHubVersion(signal), { enabled: true });
+	const v = version.data;
+	if (!v) return null;
+	const commit = v.hub.commit ? `${v.hub.commit.slice(0, 8)}${v.hub.dirty ? "+" : ""}` : "unknown";
+	return (
+		<span title={`hub started ${new Date(v.hub.startedAt).toLocaleString()}`}>
+			hub {commit} · ui {v.ui?.buildId ?? "unknown"}
+			{v.ui?.builtAt ? ` · built ${new Date(v.ui.builtAt).toLocaleString()}` : ""}
+		</span>
+	);
 }

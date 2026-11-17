@@ -31,8 +31,8 @@ export function RelayRoute({ active }: RelayRouteProps) {
 			<Help summary="What is this?">
 				<p>
 					Sessions reach the relay on the Mac itself; browsers reach it only through Tailscale, and only if paired
-					with this dashboard. Unpairing a browser in the hub also cuts its open session tabs within about 10
-					seconds.
+					with this dashboard. Unpairing a browser (<code>serve.py --revoke</code>) also cuts its open session tabs
+					within about 10 seconds.
 				</p>
 				<p>
 					<b>Rooms</b> are sessions currently sharing; <b>viewers</b> are open browser tabs. If it shows "not

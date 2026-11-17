@@ -13,22 +13,32 @@ files of every package and crate are kept as they are. The changes in this fork 
 
 All of it lives in the stats dashboard (`omp stats`):
 
-- **Accounts page.** Usage is attributed to the stored credential that served each request. Logins of one provider that belong to
-  the same person (same email and organisation) are merged into one account, with its status (active, blocked, needs login), its
-  active rate-limit blocks, its latest quota readings, and how requests are split between accounts over time. Requests that are
-  not tied to an account (background calls, API keys, gateways) are counted separately, so the per-account numbers add up to each
-  provider's total. API: `GET /api/stats/accounts`, `GET /api/stats/accounts/flow`. There is also a small Accounts card on the
-  Overview page.
-- **Live traffic page.** Which sessions are sending requests to which account right now: sessions grouped with their subagents,
-  accounts and API-key gateways (from `models.yml`), a line per session and target, solid for traffic in the last minute and dashed
-  for the last five minutes. Subagent cards show their state and the tool they started last. API: `GET /api/stats/live`, polled
-  every two seconds. It reads only your own session logs and `agent.db`; tool arguments are never stored.
-- **Hub pages: Sessions, Relay, Alerts and Pair.** These pages control omp sessions through a local "hub" (list, stop the running
-  turn, rename, end, start a session in a chosen folder, open a session through a private relay, push alerts, pair a browser).
-  They call the hub's `/api/hub/*` API from the same origin. With a plain `omp stats` there is no hub (those requests get 404), so
-  these pages have nothing to show; the other pages are not affected. For the proxy mode see `packages/stats/src/proxy-gate.ts`: with
-  `OMP_STATS_PROXY_KEY_FILE=<file>` set, the dashboard answers only a local proxy that signs each request with that key.
-  Without the variable the dashboard behaves like upstream.
+- **Accounts page** (`g a`). Usage is attributed to the stored credential that served each request. Logins of one provider that
+  belong to the same person (same email and organisation) are merged into one account, with its status (active, blocked, needs
+  login), its active rate-limit blocks, its latest quota readings, and how requests are split between accounts over time.
+  Requests that are not tied to an account (background calls, API keys, gateways) are counted separately, so the per-account
+  numbers add up to each provider's total. API: `GET /api/stats/accounts`, `GET /api/stats/accounts/flow`. There is also a small
+  Accounts card on the Overview page.
+- **Live page** (`g v`). Which sessions are sending requests to which account right now: sessions grouped with their subagents,
+  accounts and API-key gateways (from `models.yml`), a line per session and target, solid for traffic in the last minute and
+  dashed for the last five minutes. Subagent cards show their state and the tool they started last. API: `GET /api/stats/live`,
+  polled every two seconds. It reads only your own session logs and `agent.db`; tool arguments are never stored.
+- **Hub pages** in a Control group: **Sessions** (list, stop the running turn, rename, end, start a session in a chosen folder,
+  change a session's model, thinking level, plan mode or goal, answer an open plan review, a terminal panel and a quota card),
+  **Relay** (open a session through a private relay), **Alerts** (phone alerts), **Jobs** (the background jobs the hub watches,
+  with schedule, status and last log write) and **Devices** (paired browsers and pairing links), plus a **Pair** screen for
+  browsers that are not paired yet. These pages call a local "hub" through its `/api/hub/*` API from the same origin. With a
+  plain `omp stats` there is no hub (those requests get 404), so these pages have nothing to show; the other pages are not
+  affected.
+- **Proxy mode** (see `packages/stats/src/proxy-gate.ts`). It works only when the dashboard is started through the stats
+  package's own entrypoint, for example
+  `OMP_STATS_PROXY_KEY_FILE=/path/to/key bun packages/stats/src/index.ts --port 3847`. The dashboard then answers only a local
+  proxy that signs each request with that file's key. Plain `omp stats` (and `bun packages/coding-agent/src/cli.ts stats`)
+  ignores the variable and serves the dashboard without the check. Without the variable the dashboard behaves like upstream.
+- **Machine banner and installable app.** The header shows which machine the hub runs on, and the page can be installed to a
+  phone's or tablet's Home Screen (web app manifest and icons).
+
+The maintainer's own build also has a Memory page. It is **not part of this fork** and is left out of every published version.
 
 The dashboard of the companion project [omp-tether](https://github.com/saadsoft1993/omp-tether) (`omp-dashboard`) is derived from
 these hub pages; it has its own server and its own API (see its documentation) and does not proxy `omp stats`.
@@ -37,14 +47,11 @@ Branches:
 
 | Branch | Content |
 | --- | --- |
-| `insights` (default) | everything below plus this file |
-| `local-dashboard` | `stats-live-traffic` plus the hub pages and the machine banner |
-| `stats-live-traffic` | `stats-account-attribution` plus the Live traffic page |
-| `stats-account-attribution` | upstream `f2b795ba74` plus the Accounts page |
-| `main` | mirror of upstream `main`; do not commit to it |
+| `insights` (default) | the published fork: upstream plus the dashboard above and this file |
+| `main` | an old copy of upstream `main`; it is not updated |
 
-Each branch builds on the previous one, so `git diff main..insights -- packages/stats` shows all changes. Upstream's own branches
-were copied into this fork when it was created and are not used here.
+To see the dashboard changes, compare `packages/stats` with the upstream commit that `insights` last merged (the second parent
+of its newest merge commit). Other branches in this repository are older snapshots and are not updated.
 
 ## Run it
 
@@ -84,12 +91,15 @@ HOME=$(mktemp -d) bun packages/stats/src/index.ts --port 0
 omp's core pieces (file search, SQLite locking and more) are a native (Rust) addon. Nothing starts without it (the error is
 `Failed to load pi_natives native addon`). Pick one:
 
-- **Download the published addon** (no Rust needed). The version must match the repository's `packages/natives/package.json`
-  (`18.18.0` at this fork's base). Replace `darwin-arm64` with your platform and architecture (the packages are listed as `@oh-my-pi/pi-natives-*` on npm):
+- **Download the published addon** (no Rust needed). The version must match the repository's `packages/natives/package.json`,
+  which moves with upstream, so the commands below read it from there. Run them from the repository root, and replace
+  `darwin-arm64` with your platform and architecture (the packages are listed as `@oh-my-pi/pi-natives-*` on npm):
 
   ```bash
-  cd "$(mktemp -d)" && npm pack @oh-my-pi/pi-natives-darwin-arm64@18.18.0 && tar xzf oh-my-pi-pi-natives-*.tgz
-  cp package/*.node /path/to/omp-insights/packages/natives/native/
+  version=$(bun -e 'console.log(require("./packages/natives/package.json").version)')
+  repo=$PWD
+  cd "$(mktemp -d)" && npm pack "@oh-my-pi/pi-natives-darwin-arm64@$version" && tar xzf oh-my-pi-pi-natives-*.tgz
+  cp package/*.node "$repo/packages/natives/native/"
   ```
 
   On x64 Linux copy every `*.node` file; the loader picks the `baseline` or `modern` variant itself.
@@ -101,7 +111,7 @@ omp's core pieces (file search, SQLite locking and more) are a native (Rust) add
 ```bash
 cd packages/stats
 bun run check        # oxlint, oxfmt, type checks for the server and for the page
-bun test             # 283 tests on the `insights` branch (245 on stats-account-attribution, 262 on stats-live-traffic)
+bun test
 ```
 
 `bun test` needs the native addon (see above). Point `HOME` at a scratch directory if you do not want the tests near your own
@@ -115,35 +125,24 @@ report problems with this fork to the upstream project; open an issue or a pull 
 
 ### Keep up with upstream
 
-```bash
-git remote add upstream https://github.com/can1357/oh-my-pi.git
-git fetch upstream
-git checkout main && git merge --ff-only upstream/main && git push origin main
-# then move the feature branches one after the other, bottom to top:
-git checkout stats-account-attribution && git rebase upstream/main
-git checkout stats-live-traffic        && git rebase --onto stats-account-attribution <old-account-tip>
-git checkout local-dashboard           && git rebase --onto stats-live-traffic <old-live-tip>
-git checkout insights                  && git rebase --onto local-dashboard <old-hub-tip>
-```
-
-Use `git rev-parse <branch>` before the first rebase to note each old tip. Then run `bun install`, the checks above, and push with
-`git push --force-with-lease`. Most conflicts will be in `packages/stats/src/server.ts`, `db.ts` and `client/App.tsx`.
-A shallow clone cannot rebase onto upstream's history: run `git fetch --unshallow` (or clone without `--depth`) before you do this.
+The maintainer publishes `insights` from a private integration branch. Each update merges a newer upstream commit (one whose
+native addon is already on npm) and, when the dashboard changed, adds one commit with the new dashboard on top. Every published
+commit passes the checks above first. `insights` only moves forward: it is never rebased or force-pushed, so a plain
+`git pull` keeps a clone current.
 
 ## Related projects
 
 - [omp-tether](https://github.com/saadsoft1993/omp-tether): plugins for omp that let you reach your own sessions from other
   places on your own machines (session control, background services, a private relay, a local dashboard).
-- [omp-hindsight-guard](https://github.com/saadsoft1993/omp-hindsight-guard): a redacting proxy, per-folder memory banks and a
-  one-time importer for a self-run Hindsight memory server used with omp.
 
 ## Contributing
 
-Pull requests to this fork are welcome: one logical change per pull request, based on `insights`, with tests (`bun test` in
-`packages/stats`) and a clean `bun run check`. Keep user-visible changes in `packages/stats/CHANGELOG.md`. Do not put personal
-paths, host names, account names or keys in code, tests or documentation; the tests use fictional data. Upstream's
-[`CONTRIBUTING.md`](CONTRIBUTING.md) describes the code style of the project; its rule about discussing large changes first in
-Discord applies to upstream, not to this fork.
+Issues and pull requests are welcome: one logical change per pull request, against `insights`, with tests (`bun test` in
+`packages/stats`) and a clean `bun run check`. Because `insights` is published from a private integration branch, a pull request
+is not merged as it is: its change is ported by hand and then appears in the next published commit. Keep user-visible changes in
+`packages/stats/CHANGELOG.md`. Do not put personal paths, host names, account names or keys in code, tests or documentation; the
+tests use fictional data. Upstream's [`CONTRIBUTING.md`](CONTRIBUTING.md) describes the code style of the project; its rule
+about discussing large changes first in Discord applies to upstream, not to this fork.
 
 Security problems: use GitHub's private vulnerability reporting on this repository rather than a public issue. Problems that
 are in upstream code should be reported to upstream.

@@ -60,7 +60,11 @@ export function AlertsRoute({ active }: AlertsRouteProps) {
 						<Card>
 							<EmptyState
 								title="Alerts are off"
-								hint={<>Set the hub's ntfy topic in its configuration and restart the hub.</>}
+								hint={
+									<>
+										Set <code>OMP_HUB_NTFY_TOPIC</code> in the hub's environment and restart the hub.
+									</>
+								}
 							/>
 						</Card>
 					) : (

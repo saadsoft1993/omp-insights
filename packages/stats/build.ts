@@ -44,6 +44,9 @@ const indexHtml = `<!DOCTYPE html>
     <script src="theme.js"></script>
     <link rel="stylesheet" href="index.css">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <meta name="theme-color" content="#0E1016">
 </head>
 <body>
     <div id="root"></div>
@@ -53,6 +56,20 @@ const indexHtml = `<!DOCTYPE html>
 
 // Static asset the bundler never emits; copied beside index.css so the on-disk client and the embedded archive both serve it.
 await fs.copyFile("./src/client/favicon.ico", "./dist/client/favicon.ico");
+
+// Installable-app files: the manifest and its icons (PNG, since iOS ignores SVG home-screen icons).
+for (const file of ["manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"]) {
+	await fs.copyFile(`./src/client/icons/${file}`, `./dist/client/${file}`);
+}
+
+// build.json tells the hub which UI build it serves (shown by /api/hub/version). The id is a hash of the
+// bundle, so it changes exactly when the shipped code does.
+const hasher = new Bun.CryptoHasher("sha256");
+for (const file of ["index.js", "index.css"]) hasher.update(await Bun.file(`./dist/client/${file}`).bytes());
+await Bun.write(
+	"./dist/client/build.json",
+	JSON.stringify({ buildId: hasher.digest("hex").slice(0, 12), builtAt: new Date().toISOString() }),
+);
 
 await Bun.write("./dist/client/theme.js", themeJs);
 await Bun.write("./dist/client/index.html", indexHtml);

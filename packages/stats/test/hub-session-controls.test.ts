@@ -13,7 +13,7 @@ const base: HubSession = {
 	instanceId: "abcd1234",
 	sessionId: "01a1b65b-93f3-7000-8000-000000000001",
 	pid: 4242,
-	cwd: "/Users/me/projects/sms",
+	cwd: "/Users/me/projects/sample-app",
 	sessionName: "Fix login bug",
 	busy: true,
 	control: true,
@@ -45,19 +45,21 @@ describe("session controls", () => {
 
 	it("accepts the exact name or the project folder as Kill confirmation", () => {
 		expect(killConfirmMatches(base, "Fix login bug")).toBe(true);
-		expect(killConfirmMatches(base, "  sms ")).toBe(true);
-		for (const typed of ["", "fix login bug", "Fix", "/Users/me/projects/sms"]) {
+		expect(killConfirmMatches(base, "  sample-app ")).toBe(true);
+		for (const typed of ["", "fix login bug", "Fix", "/Users/me/projects/sample-app"]) {
 			expect(killConfirmMatches(base, typed)).toBe(false);
 		}
 		expect(killConfirmMatches({ ...base, sessionName: undefined }, "")).toBe(false);
 	});
 
 	it("names sessions and says where they run in herdr", () => {
-		expect(sessionDisplayName({ ...base, sessionName: undefined })).toBe("sms");
-		expect(herdrPlace({ ...base, herdr: { workspace: "sms", tab: "omp", pane: "w1:p2" } })).toBe(
-			"in herdr: sms › omp",
+		expect(sessionDisplayName({ ...base, sessionName: undefined })).toBe("sample-app");
+		expect(herdrPlace({ ...base, herdr: { workspace: "sample-app", tab: "omp", pane: "w1:p2" } })).toBe(
+			"in herdr: sample-app › omp",
 		);
-		expect(herdrPlace({ ...base, herdr: { workspace: "sms", tab: null, pane: null } })).toBe("in herdr: sms");
+		expect(herdrPlace({ ...base, herdr: { workspace: "sample-app", tab: null, pane: null } })).toBe(
+			"in herdr: sample-app",
+		);
 		expect(herdrPlace({ ...base, herdr: null })).toBeNull();
 	});
 });

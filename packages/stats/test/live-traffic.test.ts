@@ -110,7 +110,7 @@ function snapshot(
 		accounts: options.accounts ?? [PERSONAL, TEAM],
 		lastNoAccount: new Map([["gateway", NOW - 3 * 60 * MINUTE]]),
 		gateways: options.gateways ?? new Map(),
-		metadata: new Map([[ROOT, { title: "Fix enrolment report", cwd: "/Users/me/projects/acme-shop" }]]),
+		metadata: new Map([[ROOT, { title: "Fix checkout report", cwd: "/Users/me/projects/acme-shop" }]]),
 		sessionsDir: SESSIONS,
 		nowMs: NOW,
 	});
@@ -121,7 +121,7 @@ describe("buildLiveTraffic", () => {
 		const live = snapshot([row(ROOT, 30 * SECOND, 3), row(SUBAGENT, 20 * SECOND, 6), row(OTHER, 10 * SECOND, 1)]);
 		expect(live.sessions.map(s => [s.id, s.name, s.project, s.rpm])).toEqual([
 			[OTHER, "other-app", "other-app", 1],
-			[ROOT, "Fix enrolment report", "acme-shop", 2],
+			[ROOT, "Fix checkout report", "acme-shop", 2],
 		]);
 		expect(live.sessions.find(s => s.id === ROOT)?.started).toBe(Date.UTC(2026, 10, 7, 8, 43, 59, 892));
 		// Credentials 3 and 6 are one account: one line from the session, carrying both requests.
@@ -561,7 +561,7 @@ describe("live subagents", () => {
 	it("keeps a session working while its subagents run after its own turn ended", () => {
 		const live = snapshot(
 			[
-				// The sms session's own last request was 4 minutes ago; another session sent one 2 minutes ago.
+				// The acme-shop session's own last request was 4 minutes ago; another session sent one 2 minutes ago.
 				row(ROOT, 4 * MINUTE, 3),
 				row(OTHER, 2 * MINUTE, 3),
 			],

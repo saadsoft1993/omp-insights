@@ -180,6 +180,9 @@ function Session({ client, onLeave, onRejoin }: SessionProps): ReactNode {
 							working={snap.working}
 							host={toolHost}
 							phase={snap.phase}
+							olderCount={snap.olderCount}
+							loadingOlder={snap.loadingOlder}
+							onLoadOlder={() => client.loadOlder()}
 						/>
 					</div>
 					<Composer

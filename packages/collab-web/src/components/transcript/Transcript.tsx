@@ -20,6 +20,9 @@ export interface TranscriptProps {
 	host?: ToolRenderHost;
 	/** Main connection phase; absent for the agent drawer's compact transcript. */
 	phase?: ConnectionPhase;
+	olderCount?: number;
+	loadingOlder?: boolean;
+	onLoadOlder?: () => void;
 }
 
 interface ScrollGeometry {
@@ -271,14 +274,39 @@ const WINDOW = 100;
 const EARLIER_TRIGGER_PX = 200;
 
 export function Transcript(props: TranscriptProps): ReactNode {
-	const { entries, stream, streamDone, activeTools, working, compact, host, phase } = props;
+	const {
+		entries,
+		stream,
+		streamDone,
+		activeTools,
+		working,
+		compact,
+		host,
+		phase,
+		olderCount,
+		loadingOlder,
+		onLoadOlder,
+	} = props;
 
 	// null follows the tail. A number pins the first mounted entry while the
 	// reader is scrolled away from the bottom, so appended entries never
 	// unmount rows above the reader and shift the page under them.
 	const [pinnedStart, setPinnedStart] = useState<number | null>(null);
+	// A history page shifts the existing entry indices without changing the
+	// reader's window. Keep its first mounted entry pinned at its new index.
+	const previousEntries = useRef(entries);
+	let adjustedPin = pinnedStart;
+	if (previousEntries.current !== entries) {
+		const firstId = previousEntries.current[0]?.id;
+		const shift = firstId === undefined ? 0 : entries.findIndex(entry => entry.id === firstId);
+		if (shift > 0 && pinnedStart !== null) {
+			adjustedPin = pinnedStart + shift;
+			setPinnedStart(adjustedPin);
+		}
+		previousEntries.current = entries;
+	}
 	const tailStart = Math.max(0, entries.length - WINDOW);
-	const start = pinnedStart === null ? tailStart : Math.min(pinnedStart, tailStart);
+	const start = adjustedPin === null ? tailStart : Math.min(adjustedPin, entries.length);
 	const visible = useMemo(() => entries.slice(start), [entries, start]);
 
 	// A tool result always follows its call, so visible rows only pair with visible results.
@@ -390,6 +418,19 @@ export function Transcript(props: TranscriptProps): ReactNode {
 			{start > 0 && (
 				<button type="button" className="tr-earlier" onClick={showEarlier}>
 					show {start.toLocaleString("en-US")} earlier
+				</button>
+			)}
+			{start === 0 && (olderCount ?? 0) > 0 && onLoadOlder && (
+				<button
+					type="button"
+					className="tr-earlier"
+					disabled={loadingOlder || (phase !== undefined && phase !== "live")}
+					onClick={() => {
+						setPinnedStart(start);
+						onLoadOlder();
+					}}
+				>
+					{loadingOlder ? "loading earlier…" : `load ${(olderCount ?? 0).toLocaleString("en-US")} earlier`}
 				</button>
 			)}
 			{visible.map(entry => (

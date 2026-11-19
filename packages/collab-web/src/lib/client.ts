@@ -71,6 +71,8 @@ export interface GuestSnapshot {
 	uiRequest: CollabUiRequest | null;
 	/** Capped at 50, newest last. */
 	notices: readonly Notice[];
+	olderCount: number;
+	loadingOlder: boolean;
 	/** Snapshot download progress between `welcome` and its final chunk, else null. */
 	loading: { received: number; total: number } | null;
 }
@@ -83,6 +85,9 @@ const WELCOME_TIMEOUT_MS = 30_000;
 const SNAPSHOT_PROGRESS_TIMEOUT_MS = 30_000;
 /** Commit delay when `requestAnimationFrame` is unavailable (tests, non-DOM hosts). */
 const FRAME_FALLBACK_MS = 16;
+
+const HISTORY_PAGE_BYTES = 1_048_576;
+const HISTORY_PROGRESS_TIMEOUT_MS = 120_000;
 
 /** Runs `callback` on the next animation frame; returns its cancel function. */
 function scheduleFrame(callback: () => void): () => void {
@@ -129,6 +134,8 @@ export class GuestClient {
 	#autoRejoins: number[] = [];
 	#welcomeTimer: Timer | null = null;
 	#snapshotProgressTimer: Timer | null = null;
+	#pendingOlder: { reqId: number; entries: SessionEntry[]; timer: Timer } | null = null;
+	#olderCount = 0;
 
 	#phase: ConnectionPhase = "connecting";
 	#endedReason: string | null = null;
@@ -200,6 +207,8 @@ export class GuestClient {
 	close(): void {
 		this.#clearWelcomeTimer();
 		this.#clearSnapshotProgressTimer();
+		this.#cancelOlder();
+		this.#commit();
 		this.#socket.close();
 	}
 
@@ -235,6 +244,17 @@ export class GuestClient {
 		this.#socket.send({ t: "agent-cmd", cmd, agentId, text });
 	}
 
+	/** Request one page before the first currently loaded entry. */
+	loadOlder(): void {
+		const beforeId = this.#entries[0]?.id;
+		if (this.#phase !== "live" || this.#olderCount <= 0 || !beforeId || this.#pendingOlder !== null) return;
+		const reqId = ++this.#reqSeq;
+		const timer = setTimeout(() => this.#olderTimedOut(reqId), HISTORY_PROGRESS_TIMEOUT_MS);
+		this.#pendingOlder = { reqId, entries: [], timer };
+		this.#socket.send({ t: "fetch-older", reqId, beforeId, maxBytes: HISTORY_PAGE_BYTES });
+		this.#commit();
+	}
+
 	/**
 	 * Incremental subagent-transcript read. Resolves a {@link TranscriptResult}
 	 * (`rows` or terminal `error`), or `null` on transient failure (10s timeout,
@@ -263,7 +283,13 @@ export class GuestClient {
 	}
 
 	#handleOpen(): void {
-		this.#socket.send({ t: "hello", proto: COLLAB_PROTO, name: this.#name, writeToken: this.#writeToken });
+		this.#socket.send({
+			t: "hello",
+			proto: COLLAB_PROTO,
+			name: this.#name,
+			writeToken: this.#writeToken,
+			tailBytes: HISTORY_PAGE_BYTES,
+		});
 		// Before the first welcome, connect()'s timer already covers this hello.
 		if (this.#welcomed) this.#armRejoinTimer();
 		this.#phase = this.#everConnected ? "reconnecting" : "waiting";
@@ -282,10 +308,17 @@ export class GuestClient {
 			return;
 		}
 		this.#clearSnapshotProgressTimer();
+		this.#cancelOlder();
 		this.#pendingSnapshot = null;
 		this.#clearUiRequests();
 		this.#phase = "reconnecting";
-		this.#socket.send({ t: "hello", proto: COLLAB_PROTO, name: this.#name, writeToken: this.#writeToken });
+		this.#socket.send({
+			t: "hello",
+			proto: COLLAB_PROTO,
+			name: this.#name,
+			writeToken: this.#writeToken,
+			tailBytes: HISTORY_PAGE_BYTES,
+		});
 		this.#armRejoinTimer();
 		this.#commit();
 	}
@@ -302,6 +335,7 @@ export class GuestClient {
 
 	#handleClose(reason: string, willReconnect: boolean): void {
 		this.#clearSnapshotProgressTimer();
+		this.#cancelOlder();
 		if (this.#phase === "ended") return;
 		if (willReconnect) {
 			// The reopened socket's hello arms its own timer.
@@ -319,6 +353,7 @@ export class GuestClient {
 		if (this.#phase === "ended") return;
 		this.#clearWelcomeTimer();
 		this.#clearSnapshotProgressTimer();
+		this.#cancelOlder();
 		this.#phase = "ended";
 		this.#endedReason = reason;
 		this.#pendingSnapshot = null;
@@ -354,6 +389,19 @@ export class GuestClient {
 		}
 	}
 
+	#cancelOlder(): void {
+		if (this.#pendingOlder === null) return;
+		clearTimeout(this.#pendingOlder.timer);
+		this.#pendingOlder = null;
+	}
+
+	#olderTimedOut(reqId: number): void {
+		if (this.#pendingOlder?.reqId !== reqId) return;
+		this.#cancelOlder();
+		this.#pushNotice("error", "timed out loading earlier entries");
+		this.#commit();
+	}
+
 	/** Surfaces apply failures instead of letting the socket's recv chain swallow them. */
 	#applyFrameSafe(frame: HostFrame): void {
 		try {
@@ -384,6 +432,8 @@ export class GuestClient {
 				// A fresh welcome (first join or reconnect) restarts the snapshot.
 				// Entries already on screen stay until the new snapshot replaces
 				// them once complete, so a resync never blanks the transcript.
+				this.#cancelOlder();
+				this.#olderCount = frame.olderCount ?? 0;
 				this.#header = frame.header;
 				if (frame.entryCount === 0) {
 					this.#entries = [];
@@ -502,6 +552,32 @@ export class GuestClient {
 							: { kind: "rows", text: frame.text, newSize: frame.newSize },
 					);
 				}
+				break;
+			}
+			case "older-entries": {
+				const pending = this.#pendingOlder;
+				if (pending === null || pending.reqId !== frame.reqId) return;
+				if (frame.error !== undefined) {
+					this.#cancelOlder();
+					this.#pushNotice("error", frame.error);
+					break;
+				}
+				pending.entries.push(...frame.entries);
+				if (!frame.final) {
+					clearTimeout(pending.timer);
+					pending.timer = setTimeout(() => this.#olderTimedOut(pending.reqId), HISTORY_PROGRESS_TIMEOUT_MS);
+					break;
+				}
+				const ids = new Set(this.#entries.map(entry => entry.id));
+				const older = pending.entries.filter(entry => {
+					if (ids.has(entry.id)) return false;
+					ids.add(entry.id);
+					return true;
+				});
+				this.#entries = [...older, ...this.#entries];
+				this.#publishedEntries = [...this.#entries];
+				this.#olderCount = frame.start;
+				this.#cancelOlder();
 				break;
 			}
 			case "bye":
@@ -691,6 +767,8 @@ export class GuestClient {
 			readOnly: this.#readOnly,
 			uiRequest: this.#uiRequest,
 			notices: this.#notices,
+			olderCount: this.#olderCount,
+			loadingOlder: this.#pendingOlder !== null,
 			loading: this.#pendingSnapshot && {
 				received: this.#pendingSnapshot.entries.length,
 				total: this.#pendingSnapshot.total,

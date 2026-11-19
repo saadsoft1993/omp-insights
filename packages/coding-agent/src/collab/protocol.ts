@@ -75,6 +75,7 @@ export type CollabFrame =
 			 * (or a chunk arrives with `final: true`).
 			 */
 			entryCount: number;
+			olderCount?: number;
 			/** True when this peer joined through a read-only (view) link. */
 			readOnly?: boolean;
 	  }
@@ -87,6 +88,7 @@ export type CollabFrame =
 	 * guest can finalize the replica session.
 	 */
 	| { t: "snapshot-chunk"; entries: SessionEntry[]; final: boolean }
+	| { t: "older-entries"; reqId: number; start: number; entries: SessionEntry[]; final: boolean; error?: string }
 	| { t: "entry"; entry: SessionEntry }
 	| { t: "event"; event: AgentSessionEvent }
 	| { t: "state"; state: CollabSessionState }
@@ -157,6 +159,18 @@ export function encodeEventFrame(eventJson: string): EncodedFrame {
 /** `{ t: "snapshot-chunk", entries, final }` from each entry's JSON. */
 export function encodeSnapshotChunk(entryJsons: readonly string[], final: boolean): EncodedFrame {
 	return encodedFrame(`${SNAPSHOT_CHUNK_HEAD}${entryJsons.join(",")}${SNAPSHOT_CHUNK_FINAL}${final}}`);
+}
+
+/** Encode a page fragment without serializing the entries again. */
+export function encodeOlderEntries(
+	reqId: number,
+	start: number,
+	entryJsons: readonly string[],
+	final: boolean,
+): EncodedFrame {
+	return encodedFrame(
+		`{"t":"older-entries","reqId":${reqId},"start":${start},"entries":[${entryJsons.join(",")}],"final":${final}}`,
+	);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

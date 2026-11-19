@@ -52,7 +52,7 @@ function messageEntry(id: string, message: WireMessage): SessionEntry {
 	return { type: "message", id, parentId: null, timestamp: "2026-06-12T00:00:01Z", message };
 }
 
-function welcomeFrame(entryCount = 0, readOnly?: boolean): HostFrame {
+function welcomeFrame(entryCount = 0, readOnly?: boolean): Extract<HostFrame, { t: "welcome" }> {
 	return { t: "welcome", proto: COLLAB_PROTO, header: HEADER, state: STATE, agents: AGENTS, entryCount, readOnly };
 }
 
@@ -629,5 +629,167 @@ describe("GuestClient frame apply", () => {
 		const after = client.getSnapshot();
 		expect(after.entries).not.toBe(before.entries);
 		expect(after.entries).toHaveLength(before.entries.length + 1);
+	});
+
+	it("does not request history from legacy welcomes or without a cursor", () => {
+		const sent: GuestFrame[] = [];
+		const spy = vi.spyOn(CollabSocket.prototype, "send").mockImplementation(frame => {
+			sent.push(frame);
+		});
+		try {
+			const entry = messageEntry("tail", { role: "user", content: "tail", timestamp: 1 });
+			const client = liveClient([entry]);
+			expect(client.getSnapshot().olderCount).toBe(0);
+			client.loadOlder();
+			client.applyFrameForTest({ ...welcomeFrame(), olderCount: 2 });
+			client.loadOlder();
+			expect(sent).toEqual([]);
+			client.close();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("advertises tail support on open and resync hello", () => {
+		const sent: GuestFrame[] = [];
+		let socket: CollabSocket | undefined;
+		const spy = vi.spyOn(CollabSocket.prototype, "send").mockImplementation(function (this: CollabSocket, frame) {
+			socket = this;
+			sent.push(frame);
+		});
+		try {
+			const client = liveClient();
+			client.sendAbort();
+			socket!.onOpen!();
+			client.applyFrameForTest(welcomeFrame());
+			client.applyFrameForTest({ t: "error", message: "resync", resync: true });
+			const hellos = sent.filter(frame => frame.t === "hello");
+			expect(hellos).toHaveLength(2);
+			expect(hellos.every(frame => frame.tailBytes === 1_048_576)).toBe(true);
+			client.close();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("loads one older page, buffers chunks, deduplicates, and advances the cursor", () => {
+		const sent: GuestFrame[] = [];
+		const spy = vi.spyOn(CollabSocket.prototype, "send").mockImplementation(frame => {
+			sent.push(frame);
+		});
+		try {
+			const a = messageEntry("a", { role: "user", content: "a", timestamp: 1 });
+			const b = messageEntry("b", { role: "user", content: "b", timestamp: 2 });
+			const c = messageEntry("c", { role: "user", content: "c", timestamp: 3 });
+			const d = messageEntry("d", { role: "user", content: "d", timestamp: 4 });
+			const client = new GuestClient(LINK, "tester");
+			client.loadOlder();
+			expect(sent).toEqual([]);
+			client.applyFrameForTest({ ...welcomeFrame(1), olderCount: 3 });
+			client.loadOlder();
+			expect(sent).toEqual([]);
+			client.applyFrameForTest(snapshotChunk([c]));
+			expect(client.getSnapshot().olderCount).toBe(3);
+			client.loadOlder();
+			client.loadOlder();
+			expect(sent).toEqual([{ t: "fetch-older", reqId: 1, beforeId: "c", maxBytes: 1_048_576 }]);
+			expect(client.getSnapshot().loadingOlder).toBe(true);
+			client.applyFrameForTest({ t: "older-entries", reqId: 99, start: 1, entries: [a], final: true });
+			client.applyFrameForTest({ t: "older-entries", reqId: 1, start: 1, entries: [a, b], final: false });
+			client.applyFrameForTest({ t: "entry", entry: d });
+			expect(client.getSnapshot().entries).toEqual([c, d]);
+			client.applyFrameForTest({ t: "older-entries", reqId: 1, start: 1, entries: [b, c], final: true });
+			expect(client.getSnapshot().entries).toEqual([a, b, c, d]);
+			expect(client.getSnapshot().olderCount).toBe(1);
+			expect(client.getSnapshot().loadingOlder).toBe(false);
+			client.loadOlder();
+			expect(sent[1]).toEqual({ t: "fetch-older", reqId: 2, beforeId: "a", maxBytes: 1_048_576 });
+			client.applyFrameForTest({ t: "older-entries", reqId: 2, start: 0, entries: [], final: true });
+			client.loadOlder();
+			expect(sent).toHaveLength(2);
+			client.close();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("surfaces older-page errors and permits a retry", () => {
+		const spy = vi.spyOn(CollabSocket.prototype, "send").mockImplementation(() => {});
+		try {
+			const entry = messageEntry("tail", { role: "user", content: "tail", timestamp: 1 });
+			const client = liveClient([entry]);
+			client.applyFrameForTest({ ...welcomeFrame(1), olderCount: 2 });
+			client.applyFrameForTest(snapshotChunk([entry]));
+			client.loadOlder();
+			client.applyFrameForTest({
+				t: "older-entries",
+				reqId: 1,
+				start: 0,
+				entries: [],
+				final: true,
+				error: "read failed",
+			});
+			expect(client.getSnapshot()).toMatchObject({ olderCount: 2, loadingOlder: false, entries: [entry] });
+			expect(client.getSnapshot().notices.at(-1)).toMatchObject({ level: "error", message: "read failed" });
+			client.loadOlder();
+			expect(client.getSnapshot().loadingOlder).toBe(true);
+			client.close();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("resets the older-page progress timer and ignores late frames after timeout", () => {
+		vi.useFakeTimers();
+		const spy = vi.spyOn(CollabSocket.prototype, "send").mockImplementation(() => {});
+		try {
+			const entry = messageEntry("tail", { role: "user", content: "tail", timestamp: 1 });
+			const client = new GuestClient(LINK, "tester");
+			client.applyFrameForTest({ ...welcomeFrame(1), olderCount: 2 });
+			client.applyFrameForTest(snapshotChunk([entry]));
+			client.loadOlder();
+			vi.advanceTimersByTime(119_999);
+			client.applyFrameForTest({ t: "older-entries", reqId: 1, start: 1, entries: [], final: false });
+			vi.advanceTimersByTime(119_999);
+			expect(client.getSnapshot().loadingOlder).toBe(true);
+			vi.advanceTimersByTime(1);
+			expect(client.getSnapshot().loadingOlder).toBe(false);
+			expect(client.getSnapshot().notices.at(-1)?.message).toContain("timed out");
+			client.applyFrameForTest({ t: "older-entries", reqId: 1, start: 0, entries: [], final: true });
+			expect(client.getSnapshot().olderCount).toBe(2);
+			client.close();
+		} finally {
+			spy.mockRestore();
+			vi.useRealTimers();
+		}
+	});
+
+	it("cancels older-page requests on welcome, close, disconnect, and end", () => {
+		vi.useFakeTimers();
+		let socket: CollabSocket | undefined;
+		const spy = vi.spyOn(CollabSocket.prototype, "send").mockImplementation(function (this: CollabSocket) {
+			socket = this;
+		});
+		try {
+			const entry = messageEntry("tail", { role: "user", content: "tail", timestamp: 1 });
+			for (const cancel of ["welcome", "close", "disconnect", "end"] as const) {
+				const client = new GuestClient(LINK, "tester");
+				client.applyFrameForTest({ ...welcomeFrame(1), olderCount: 2 });
+				client.applyFrameForTest(snapshotChunk([entry]));
+				client.loadOlder();
+				if (cancel === "welcome") client.applyFrameForTest(welcomeFrame());
+				else if (cancel === "close") client.close();
+				else if (cancel === "disconnect") socket!.onClose!("lost", true);
+				else client.applyFrameForTest({ t: "bye", reason: "ended" });
+				expect(client.getSnapshot().loadingOlder).toBe(false);
+				client.applyFrameForTest({ t: "older-entries", reqId: 1, start: 0, entries: [], final: true });
+				vi.advanceTimersByTime(120_000);
+				expect(client.getSnapshot().notices).toEqual([]);
+				client.close();
+			}
+		} finally {
+			spy.mockRestore();
+			vi.useRealTimers();
+		}
 	});
 });

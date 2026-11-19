@@ -338,12 +338,15 @@ export type GuestFrame =
 			 * read-only and rejects their mutating frames.
 			 */
 			writeToken?: string;
+			/** Optional UTF-8 budget for the newest entries in the initial snapshot. */
+			tailBytes?: number;
 	  }
 	| { t: "prompt"; text: string; images?: ImageContent[] }
 	| { t: "ui-response"; reqId: number; value?: CollabUiResponseValue }
 	| { t: "abort" }
 	| { t: "agent-cmd"; cmd: "chat" | "kill" | "revive"; agentId: string; text?: string }
-	| { t: "fetch-transcript"; reqId: number; agentId: string; fromByte: number };
+	| { t: "fetch-transcript"; reqId: number; agentId: string; fromByte: number }
+	| { t: "fetch-older"; reqId: number; beforeId: string; maxBytes: number };
 
 /** EventBus channels mirrored to guests (task subagent traffic only). */
 export type BusChannel = "task:subagent:progress" | "task:subagent:lifecycle";
@@ -362,6 +365,8 @@ export type HostFrame =
 			 * with `final: true`).
 			 */
 			entryCount: number;
+			/** Number of wire entries preceding the delivered tail, when requested. */
+			olderCount?: number;
 			/** True when this peer joined through a read-only (view) link. */
 			readOnly?: boolean;
 	  }
@@ -372,6 +377,7 @@ export type HostFrame =
 	 * carries `final: true`; guests finalize the replica on that frame.
 	 */
 	| { t: "snapshot-chunk"; entries: SessionEntry[]; final: boolean }
+	| { t: "older-entries"; reqId: number; start: number; entries: SessionEntry[]; final: boolean; error?: string }
 	| { t: "entry"; entry: SessionEntry }
 	| { t: "event"; event: AgentEvent }
 	| { t: "state"; state: SessionState }

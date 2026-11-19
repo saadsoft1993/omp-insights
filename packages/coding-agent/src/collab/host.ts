@@ -42,6 +42,7 @@ import {
 	encodeEntryFrame,
 	encodeEventFrame,
 	encodeFrame,
+	encodeOlderEntries,
 	encodeSnapshotChunk,
 	type EncodedFrame,
 	formatCollabLink,
@@ -137,6 +138,9 @@ const TRANSCRIPT_ENTRY_TOO_LARGE_ERROR = `transcript entry exceeds transcript fe
  * and the seal step care about — not UTF-16 code units (#11433).
  */
 const SNAPSHOT_CHUNK_BYTES = 512 * 1024;
+const MIN_HISTORY_BYTES = 64 * 1024;
+const MAX_TAIL_BYTES = 8 * 1024 * 1024;
+const MAX_PAGE_BYTES = 1024 * 1024;
 const MAX_PENDING_UI_REQUESTS = 64;
 const RESYNC_MESSAGE = "the host discarded your backlog; rejoin to resync";
 /**
@@ -834,7 +838,7 @@ export class CollabHost {
 		if (!this.#guestTrafficAllowed()) return;
 		switch (frame.t) {
 			case "hello":
-				this.#handleHello(frame.name, frame.proto, frame.writeToken, fromPeer);
+				this.#handleHello(frame.name, frame.proto, frame.writeToken, frame.tailBytes, fromPeer);
 				break;
 			case "prompt":
 				if (this.#rejectWhileStarting("prompting", fromPeer)) break;
@@ -850,6 +854,9 @@ export class CollabHost {
 				break;
 			case "fetch-transcript":
 				void this.#handleFetchTranscript(frame.reqId, frame.agentId, frame.fromByte, fromPeer);
+				break;
+			case "fetch-older":
+				this.#handleFetchOlder(frame.reqId, frame.beforeId, frame.maxBytes, fromPeer);
 				break;
 			default:
 				logger.debug("collab host ignoring unexpected frame", { type: frame.t, fromPeer });
@@ -883,7 +890,13 @@ export class CollabHost {
 		return true;
 	}
 
-	#handleHello(name: string, proto: number, writeToken: string | undefined, fromPeer: number): void {
+	#handleHello(
+		name: string,
+		proto: number,
+		writeToken: string | undefined,
+		tailBytes: number | undefined,
+		fromPeer: number,
+	): void {
 		if (this.#ctx.session.isSessionTransitioning) {
 			this.#send({ t: "error", message: "Session transition in progress; join again when it completes" }, fromPeer);
 			return;
@@ -893,6 +906,10 @@ export class CollabHost {
 				{ t: "error", message: `protocol mismatch: host speaks v${COLLAB_PROTO}, guest sent v${proto}` },
 				fromPeer,
 			);
+			return;
+		}
+		if (tailBytes !== undefined && (typeof tailBytes !== "number" || !Number.isFinite(tailBytes))) {
+			this.#send({ t: "error", message: "invalid tailBytes" }, fromPeer);
 			return;
 		}
 		const cleanName = name.trim().slice(0, 64) || `guest-${fromPeer}`;
@@ -909,7 +926,16 @@ export class CollabHost {
 		// copy. Chunk frames are assembled from these strings only as the
 		// transport drains.
 		const snapshot = this.#ctx.sessionManager.snapshotForReplication();
-		const snapshotEntries = this.#serializeSnapshotEntries(snapshot.entries.filter(isWireSessionEntry));
+		const wireEntries = snapshot.entries.filter(isWireSessionEntry);
+		const tail =
+			tailBytes === undefined
+				? undefined
+				: this.#serializeHistoryTail(
+						wireEntries,
+						wireEntries.length,
+						Math.max(MIN_HISTORY_BYTES, Math.min(MAX_TAIL_BYTES, tailBytes)),
+					);
+		const snapshotEntries = tail ?? this.#serializeSnapshotEntries(wireEntries);
 		const state = this.#buildState();
 		const welcome = encodeFrame({
 			t: "welcome",
@@ -918,6 +944,7 @@ export class CollabHost {
 			state,
 			agents: this.#snapshotAgents(),
 			entryCount: snapshotEntries.json.length,
+			olderCount: tail?.start,
 			readOnly: canWrite ? undefined : true,
 		});
 		// Welcome, chunks and replayed asks are one queue entry: up to
@@ -1020,6 +1047,74 @@ export class CollabHost {
 		return { json, bytes };
 	}
 
+	/** Serialize only the suffix needed for a byte-bounded history page. */
+	#serializeHistoryTail(
+		entries: ReplicatedEntry[],
+		end: number,
+		budget: number,
+	): { json: string[]; bytes: number[]; start: number } {
+		const json: string[] = [];
+		const bytes: number[] = [];
+		let total = 0;
+		let start = end;
+		while (start > 0) {
+			const entry = entries[start - 1];
+			if (!entry) break;
+			const serialized = this.#serializeSnapshotEntries([entry]);
+			const text = serialized.json[0];
+			const size = serialized.bytes[0];
+			if (text === undefined || size === undefined) break;
+			if (json.length > 0 && total + size > budget) break;
+			json.push(text);
+			bytes.push(size);
+			total += size;
+			start--;
+		}
+		json.reverse();
+		bytes.reverse();
+		return { json, bytes, start };
+	}
+
+	#handleFetchOlder(reqId: number, beforeId: string, maxBytes: number, fromPeer: number): void {
+		const socket = this.#socket;
+		if (!socket) return;
+		const replyError = (error: string) => {
+			socket.send({ t: "older-entries", reqId, start: 0, entries: [], final: true, error }, fromPeer);
+		};
+		if (
+			!Number.isSafeInteger(reqId) ||
+			typeof beforeId !== "string" ||
+			!beforeId.trim() ||
+			typeof maxBytes !== "number" ||
+			!Number.isFinite(maxBytes)
+		) {
+			replyError("invalid history request");
+			return;
+		}
+		if (this.#ctx.session.isSessionTransitioning) {
+			replyError("session transition in progress");
+			return;
+		}
+		const entries = this.#ctx.sessionManager.snapshotForReplication().entries.filter(isWireSessionEntry);
+		const end = entries.findIndex(entry => entry.id === beforeId);
+		if (end < 0) {
+			replyError("history cursor not found");
+			return;
+		}
+		const budget = Math.max(MIN_HISTORY_BYTES, Math.min(MAX_PAGE_BYTES, maxBytes));
+		const page = this.#serializeHistoryTail(entries, end, budget);
+		const overhead = Buffer.byteLength(encodeOlderEntries(reqId, entries.length, [], false));
+		for (const frame of this.#snapshotChunks(
+			page.json,
+			page.bytes,
+			(batch, final) => encodeOlderEntries(reqId, page.start, batch, final),
+			overhead,
+		)) {
+			if (!this.#guestTrafficAllowed() || this.#ctx.session.isSessionTransitioning || !socket.send(frame, fromPeer))
+				break;
+		}
+	}
+
 	/** The welcome, its snapshot chunks, then the replayed asks, as one lazily drained batch. */
 	*#welcomeBatch(
 		welcome: EncodedFrame,
@@ -1038,24 +1133,29 @@ export class CollabHost {
 	 * still emits one `final` chunk so the guest never blocks on a missing
 	 * terminator. Each batch's strings are released once its frame is built.
 	 */
-	*#snapshotChunks(entries: string[], bytes: number[]): Generator<EncodedFrame> {
+	*#snapshotChunks(
+		entries: string[],
+		bytes: number[],
+		encode: (batch: string[], final: boolean) => EncodedFrame = (batch, final) => encodeSnapshotChunk(batch, final),
+		overhead = Buffer.byteLength(encodeSnapshotChunk([], false)),
+	): Generator<EncodedFrame> {
 		if (entries.length === 0) {
-			yield encodeSnapshotChunk([], true);
+			yield encode([], true);
 			return;
 		}
 		let i = 0;
 		while (i < entries.length) {
 			const start = i;
-			let batchBytes = 0;
+			let batchBytes = overhead;
 			while (i < entries.length) {
-				const entryBytes = bytes[i] ?? 0;
+				const entryBytes = (bytes[i] ?? 0) + (i > start ? 1 : 0);
 				if (i > start && batchBytes + entryBytes > SNAPSHOT_CHUNK_BYTES) break;
 				batchBytes += entryBytes;
 				i++;
 			}
 			const batch = entries.slice(start, i);
 			entries.fill("", start, i);
-			yield encodeSnapshotChunk(batch, i >= entries.length);
+			yield encode(batch, i >= entries.length);
 		}
 	}
 

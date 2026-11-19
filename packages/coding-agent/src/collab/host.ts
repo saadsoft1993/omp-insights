@@ -908,10 +908,6 @@ export class CollabHost {
 			);
 			return;
 		}
-		if (tailBytes !== undefined && (typeof tailBytes !== "number" || !Number.isFinite(tailBytes))) {
-			this.#send({ t: "error", message: "invalid tailBytes" }, fromPeer);
-			return;
-		}
 		const cleanName = name.trim().slice(0, 64) || `guest-${fromPeer}`;
 		const canWrite = this.#verifyWriteToken(writeToken);
 		const firstPeer = this.#peers.size === 0;
@@ -928,13 +924,13 @@ export class CollabHost {
 		const snapshot = this.#ctx.sessionManager.snapshotForReplication();
 		const wireEntries = snapshot.entries.filter(isWireSessionEntry);
 		const tail =
-			tailBytes === undefined
-				? undefined
-				: this.#serializeHistoryTail(
+			typeof tailBytes === "number" && Number.isFinite(tailBytes) && tailBytes > 0
+				? this.#serializeHistoryTail(
 						wireEntries,
 						wireEntries.length,
 						Math.max(MIN_HISTORY_BYTES, Math.min(MAX_TAIL_BYTES, tailBytes)),
-					);
+					)
+				: undefined;
 		const snapshotEntries = tail ?? this.#serializeSnapshotEntries(wireEntries);
 		const state = this.#buildState();
 		const welcome = encodeFrame({
@@ -1053,26 +1049,22 @@ export class CollabHost {
 		end: number,
 		budget: number,
 	): { json: string[]; bytes: number[]; start: number } {
-		const json: string[] = [];
-		const bytes: number[] = [];
 		let total = 0;
 		let start = end;
 		while (start > 0) {
 			const entry = entries[start - 1];
 			if (!entry) break;
-			const serialized = this.#serializeSnapshotEntries([entry]);
-			const text = serialized.json[0];
-			const size = serialized.bytes[0];
-			if (text === undefined || size === undefined) break;
-			if (json.length > 0 && total + size > budget) break;
-			json.push(text);
-			bytes.push(size);
+			let size: number;
+			try {
+				size = Buffer.byteLength(JSON.stringify(entry), "utf8");
+			} catch {
+				size = MAX_REPLICATED_PAYLOAD_BYTES;
+			}
+			if (start < end && total + size > budget) break;
 			total += size;
 			start--;
 		}
-		json.reverse();
-		bytes.reverse();
-		return { json, bytes, start };
+		return { ...this.#serializeSnapshotEntries(entries.slice(start, end)), start };
 	}
 
 	#handleFetchOlder(reqId: number, beforeId: string, maxBytes: number, fromPeer: number): void {
@@ -1110,8 +1102,11 @@ export class CollabHost {
 			(batch, final) => encodeOlderEntries(reqId, page.start, batch, final),
 			overhead,
 		)) {
-			if (!this.#guestTrafficAllowed() || this.#ctx.session.isSessionTransitioning || !socket.send(frame, fromPeer))
+			if (!this.#guestTrafficAllowed() || this.#ctx.session.isSessionTransitioning) break;
+			if (!socket.send(frame, fromPeer)) {
+				logger.debug("collab: older-entries not admitted", { fromPeer });
 				break;
+			}
 		}
 	}
 

@@ -1,3 +1,4 @@
+import { concreteMachine } from "../app/machine";
 import { format } from "@oh-my-pi/pi-utils/dates";
 import { useMemo, useState } from "react";
 import { getSpotlightSessionContext } from "../api";
@@ -12,6 +13,7 @@ export interface CompoundingProps {
 	stats: SpotlightDashboardStats;
 	active: boolean;
 	stale: boolean;
+	machine?: string;
 }
 
 /**
@@ -28,7 +30,7 @@ function sessionLabel(session: SpotlightSessionSummary): string {
 }
 
 /** A cut keeps paying: every later request would have re-read it. One session's context with and without shaping. */
-export function Compounding({ stats, active, stale }: CompoundingProps) {
+export function Compounding({ stats, active, stale, machine }: CompoundingProps) {
 	const { compounding } = stats;
 	const [picked, setPicked] = useState<string | null>(null);
 	const sessions = stats.sessionList;
@@ -37,9 +39,9 @@ export function Compounding({ stats, active, stale }: CompoundingProps) {
 	const file = picked !== null && sessions.some(s => s.sessionFile === picked) ? picked : fallback?.sessionFile;
 
 	const context = useQuery(
-		["spotlight-session", file ?? null],
-		({ signal }) => getSpotlightSessionContext(file ?? "", signal),
-		{ enabled: active && file !== undefined },
+		["spotlight-session", file ?? null, machine],
+		({ signal }) => getSpotlightSessionContext(file ?? "", signal, machine ?? concreteMachine()),
+		{ enabled: active && file !== undefined, retain: false },
 	);
 	const avoided = compounding.avoidedTokens - compounding.recoveredCarriedTokens;
 	// Saving-weighted mean of the requests each cut stayed out of.

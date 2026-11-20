@@ -3,7 +3,13 @@
 	"include": [
 		"src/client",
 		"test/devices-route.test.tsx",
-		"test/errors-route-range.test.tsx"
+		"test/errors-route-range.test.tsx",
+		"test/memory-*.test.ts",
+		"test/model-flow-route.test.tsx",
+		"test/restart-retry.test.ts",
+		"test/relay-route.test.tsx",
+		"test/memory-*.test.tsx",
+		"test/helpers/memory-fixtures.ts"
 	],
 	"compilerOptions": {
 		"jsx": "react-jsx",

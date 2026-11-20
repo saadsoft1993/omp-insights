@@ -1,3 +1,7 @@
+import { ALL_MACHINES, concreteMachine, useSelectedMachine } from "../app/machine";
+import { MissingMachineNumbers } from "../app/MachineBanner";
+import { fleetQueryView, useFleetQuery } from "../data/fleet-query";
+import { mergeModels } from "../data/fleet-merge";
 import "./models.css";
 import { ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -60,9 +64,21 @@ const SHARE_OPTIONS = [
 const SHARE_LIMIT = 6;
 
 export function ModelsRoute({ active, range }: ModelsRouteProps) {
-	const query = useQuery(["models", range], ({ signal }) => getModelDashboardStats(range, signal), {
-		enabled: active,
-	});
+	const allMachines = useSelectedMachine() === ALL_MACHINES;
+	const single = useQuery(
+		["models", range],
+		({ signal }) => getModelDashboardStats(range, signal, concreteMachine()),
+		{
+			enabled: active && !allMachines,
+		},
+	);
+	const fleet = useFleetQuery(
+		["models", range],
+		(machine, signal) => getModelDashboardStats(range, signal, machine),
+		mergeModels,
+		{ enabled: active && allMachines },
+	);
+	const query = allMachines ? fleetQueryView(single, fleet) : single;
 	const meta = rangeMeta(range);
 	const [mode, setMode] = useState<ShareMode>("share");
 	const [hidden, toggleSeries] = useHiddenSeries();
@@ -79,6 +95,7 @@ export function ModelsRoute({ active, range }: ModelsRouteProps) {
 
 	return (
 		<div className="page">
+			{allMachines && <MissingMachineNumbers machines={fleet.machines} />}
 			<PageHeader
 				title="Models"
 				description={`Which models did the work in ${meta.windowLabel}, and how fast they answered.`}
@@ -148,7 +165,13 @@ export function ModelsRoute({ active, range }: ModelsRouteProps) {
 				}
 				stale={query.stale}
 			>
-				<QueryView query={query} skeleton={<ChartSkeleton height={260} />} isEmpty={isEmpty} empty={empty}>
+				<QueryView
+					hideError
+					query={query}
+					skeleton={<ChartSkeleton height={260} />}
+					isEmpty={isEmpty}
+					empty={empty}
+				>
 					{() =>
 						view && (
 							<div className="stack" style={{ gap: 12 }}>
@@ -186,7 +209,7 @@ export function ModelsRoute({ active, range }: ModelsRouteProps) {
 				stale={query.stale}
 				flush
 			>
-				<QueryView query={query} skeleton={<TableSkeleton rows={8} />} isEmpty={isEmpty} empty={empty}>
+				<QueryView hideError query={query} skeleton={<TableSkeleton rows={8} />} isEmpty={isEmpty} empty={empty}>
 					{() =>
 						view && (
 							<Table

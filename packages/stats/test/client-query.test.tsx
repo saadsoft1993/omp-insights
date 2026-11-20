@@ -1,3 +1,4 @@
+import { concreteMachine, getFleet } from "../src/client/app/machine";
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { parseHTML } from "@oh-my-pi/pi-utils/dom";
 import { act } from "react";
@@ -240,7 +241,13 @@ describe("trace revalidation", () => {
 			results.push(
 				useQuery<SessionTrace>(
 					["trace", file],
-					({ signal }, previous) => getSessionTrace(file, signal, previous),
+					({ signal }, previous) =>
+						getSessionTrace(
+							file,
+							signal,
+							previous,
+							concreteMachine() ?? getFleet()?.find(machine => machine.self)?.id,
+						),
 					{},
 				),
 			);

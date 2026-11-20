@@ -32,6 +32,14 @@ export interface TimelineCanvasProps {
 	collapsed: ReadonlySet<string>;
 	onToggleCollapse: (trackId: string) => void;
 	traceStart: number;
+	onLoadTrack?: (trackId: string) => void;
+	loadingTracks?: ReadonlySet<string>;
+	failedTracks?: ReadonlySet<string>;
+	/** Plain explanation per failed track, for its Try again button's tooltip. */
+	trackFailures?: ReadonlyMap<string, string>;
+	/** Loaded tracks whose refresh failed (explanation per id): the last spans stay, with a Try again. */
+	staleTracks?: ReadonlyMap<string, string>;
+	onRetryTrack?: (trackId: string) => void;
 	/** Live route focuses immediately; embedded viewers wait for user interaction. */
 	autoFocus?: boolean;
 }
@@ -224,6 +232,12 @@ export function TimelineCanvas({
 	collapsed,
 	onToggleCollapse,
 	traceStart,
+	onLoadTrack,
+	loadingTracks,
+	failedTracks,
+	trackFailures,
+	staleTracks,
+	onRetryTrack,
 	autoFocus = true,
 }: TimelineCanvasProps) {
 	const colors = useTraceTheme();
@@ -540,6 +554,35 @@ export function TimelineCanvas({
 								<span className="traces-gutter-model mono truncate" style={{ flexShrink: 1, minWidth: 0 }}>
 									{block.track.model}
 								</span>
+							)}
+							{staleTracks?.has(block.track.id) && onRetryTrack && (
+								<button
+									type="button"
+									className="traces-gutter-load"
+									data-failed
+									data-stale
+									title={staleTracks.get(block.track.id)}
+									aria-label={`${block.track.label}: couldn't refresh; try again`}
+									onClick={() => onRetryTrack(block.track.id)}
+								>
+									Try again
+								</button>
+							)}
+							{block.track.omittedSpans !== undefined && onLoadTrack && (
+								<button
+									type="button"
+									className="traces-gutter-load"
+									disabled={loadingTracks?.has(block.track.id)}
+									data-failed={failedTracks?.has(block.track.id) || undefined}
+									title={failedTracks?.has(block.track.id) ? trackFailures?.get(block.track.id) : undefined}
+									onClick={() => onLoadTrack(block.track.id)}
+								>
+									{loadingTracks?.has(block.track.id)
+										? "Loading…"
+										: failedTracks?.has(block.track.id)
+											? "Try again"
+											: `Load ${block.track.omittedSpans} spans`}
+								</button>
 							)}
 						</div>
 						{block.lanes.map(lane => (

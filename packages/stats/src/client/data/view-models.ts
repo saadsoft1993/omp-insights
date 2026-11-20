@@ -123,6 +123,52 @@ export function buildDecisionModelShare(bySideChannel: readonly SideChannelStats
 	return shareView(sideChannelSegments(bySideChannel, true), SERIES_COLORS);
 }
 
+export interface AgentTokenSegment {
+	agentType: AgentType;
+	/** input + output + cache read + cache write — the displayed denominator. */
+	tokens: number;
+	requests: number;
+	cost: number;
+	/** Fraction (0-1) of total tokens across all present agent types. */
+	share: number;
+}
+
+export interface AgentTokenShareView {
+	totalTokens: number;
+	totalCost: number;
+	segments: AgentTokenSegment[];
+}
+
+/**
+ * Build the "token usage by agent" breakdown: one segment per agent type that
+ * appears in the data, ordered main -> subagents -> advisor, each carrying its
+ * token total and share of the grand total. Token counts use the same four
+ * conversation-token buckets as the overview total so the two views reconcile.
+ */
+export function buildAgentTokenShare(stats: AgentTypeStats[]): AgentTokenShareView {
+	const byType = new Map<AgentType, AgentTypeStats>();
+	for (const stat of stats) byType.set(stat.agentType, stat);
+
+	const present = AGENT_TYPE_ORDER.map(type => byType.get(type)).filter(
+		(stat): stat is AgentTypeStats => stat !== undefined,
+	);
+	const totalTokens = present.reduce((sum, stat) => sum + sumConversationTokens(stat), 0);
+	const totalCost = present.reduce((sum, stat) => sum + stat.totalCost, 0);
+
+	const segments = present.map(stat => {
+		const tokens = sumConversationTokens(stat);
+		return {
+			agentType: stat.agentType,
+			tokens,
+			requests: stat.totalRequests,
+			cost: stat.totalCost,
+			share: totalTokens > 0 ? tokens / totalTokens : 0,
+		};
+	});
+
+	return { totalTokens, totalCost, segments };
+}
+
 /** API-equivalent cost split by billing component. */
 export interface CostComponents {
 	costInput: number;

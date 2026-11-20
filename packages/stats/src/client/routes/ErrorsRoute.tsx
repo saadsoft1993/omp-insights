@@ -1,3 +1,7 @@
+import { ALL_MACHINES, concreteMachine, useSelectedMachine } from "../app/machine";
+import { MissingMachineNumbers } from "../app/MachineBanner";
+import { fleetQueryView, useFleetQuery } from "../data/fleet-query";
+import { mergeErrors } from "../data/fleet-merge";
 import { ArrowUpRight, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { getRecentErrors } from "../api";
@@ -35,7 +39,7 @@ import "./errors.css";
 export interface ErrorsRouteProps {
 	active: boolean;
 	range: TimeRange;
-	onRequestClick: (id: number) => void;
+	onRequestClick: (id: number, machine?: string) => void;
 }
 
 /** How many of the newest failures to load; "Load more" steps through these. */
@@ -44,9 +48,19 @@ const LOAD_STEPS = [50, 200, 1_000] as const;
 export function ErrorsRoute({ active, range, onRequestClick }: ErrorsRouteProps) {
 	const [step, setStep] = useState(0);
 	const limit = LOAD_STEPS[step];
-	const errors = useQuery(["errors", range, limit], ({ signal }) => getRecentErrors(range, limit, signal), {
-		enabled: active,
-	});
+	const all = useSelectedMachine() === ALL_MACHINES;
+	const single = useQuery(
+		["errors", range, limit],
+		({ signal }) => getRecentErrors(range, limit, signal, concreteMachine()),
+		{ enabled: active && !all },
+	);
+	const fleet = useFleetQuery(
+		["errors", range, limit],
+		async (machine, signal) => ({ machine, data: await getRecentErrors(range, limit, signal, machine) }),
+		answers => mergeErrors(answers, limit),
+		{ enabled: active && all },
+	);
+	const errors = all ? fleetQueryView(single, fleet) : single;
 	const [selectedSignature, setSelectedSignature] = useState<string | null>(null);
 	const [selectedModel, setSelectedModel] = useState<string | null>(null);
 	const [search, setSearch] = useState("");
@@ -126,6 +140,7 @@ export function ErrorsRoute({ active, range, onRequestClick }: ErrorsRouteProps)
 				title="Errors"
 				description={`Failed model requests in ${meta.windowLabel}, grouped by error signature. Open a failure for its full payload.`}
 			/>
+			{all && <MissingMachineNumbers machines={fleet.machines} />}
 
 			<QueryView query={errors} skeleton={<Skeleton height={96} style={{ borderRadius: 12 }} />}>
 				{() => (
@@ -166,6 +181,7 @@ export function ErrorsRoute({ active, range, onRequestClick }: ErrorsRouteProps)
 					stale={errors.stale}
 				>
 					<QueryView
+						hideError
 						query={errors}
 						skeleton={<TableSkeleton rows={8} />}
 						isEmpty={rows => rows.length === 0}
@@ -203,6 +219,7 @@ export function ErrorsRoute({ active, range, onRequestClick }: ErrorsRouteProps)
 					stale={errors.stale}
 				>
 					<QueryView
+						hideError
 						query={errors}
 						skeleton={<Skeleton height={180} />}
 						isEmpty={rows => rows.length === 0}
@@ -269,6 +286,7 @@ export function ErrorsRoute({ active, range, onRequestClick }: ErrorsRouteProps)
 				footer={footer}
 			>
 				<QueryView
+					hideError
 					query={errors}
 					skeleton={<TableSkeleton rows={10} />}
 					isEmpty={rows => rows.length === 0}
@@ -277,8 +295,13 @@ export function ErrorsRoute({ active, range, onRequestClick }: ErrorsRouteProps)
 					{() => (
 						<Table
 							rows={filtered}
-							rowKey={row => row.id ?? `${row.sessionFile}:${row.entryId}`}
-							onRowClick={row => row.id !== undefined && onRequestClick(row.id)}
+							rowKey={row =>
+								`${(row as MessageStats & { machine?: string }).machine ?? ""}:${row.id ?? `${row.sessionFile}:${row.entryId}`}`
+							}
+							onRowClick={row =>
+								row.id !== undefined &&
+								onRequestClick(row.id, (row as MessageStats & { machine?: string }).machine)
+							}
 							columns={FAILURE_COLUMNS}
 							initialSort={{ key: "time", dir: "desc" }}
 							limit={50}
@@ -339,7 +362,13 @@ function buildGroupColumns(maxCount: number): Column<ErrorGroupView>[] {
 	];
 }
 
-function SignatureDetail({ group, onRequestClick }: { group: ErrorGroupView; onRequestClick: (id: number) => void }) {
+function SignatureDetail({
+	group,
+	onRequestClick,
+}: {
+	group: ErrorGroupView;
+	onRequestClick: (id: number, machine?: string) => void;
+}) {
 	const latestId = group.latest.id;
 	return (
 		<div className="errors-detail">
@@ -350,7 +379,14 @@ function SignatureDetail({ group, onRequestClick }: { group: ErrorGroupView; onR
 					{formatTimestamp(group.lastSeen)}
 				</span>
 				{latestId !== undefined && (
-					<button type="button" className="btn" data-size="sm" onClick={() => onRequestClick(latestId)}>
+					<button
+						type="button"
+						className="btn"
+						data-size="sm"
+						onClick={() =>
+							onRequestClick(latestId, (group.latest as MessageStats & { machine?: string }).machine)
+						}
+					>
 						Open latest <ArrowUpRight size={13} />
 					</button>
 				)}
@@ -383,7 +419,12 @@ const FAILURE_COLUMNS: readonly Column<MessageStats>[] = [
 		key: "model",
 		header: "Model",
 		sort: row => row.model,
-		render: row => <LabelCell primary={<span className="mono">{row.model}</span>} secondary={row.provider} />,
+		render: row => (
+			<LabelCell
+				primary={<span className="mono">{row.model}</span>}
+				secondary={[row.provider, (row as MessageStats & { machine?: string }).machine].filter(Boolean).join(" · ")}
+			/>
+		),
 	},
 	{
 		key: "error",

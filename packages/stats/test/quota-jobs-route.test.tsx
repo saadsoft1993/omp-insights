@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { PairScreen } from "../src/client/app/PairScreen";
 import { markUnpaired } from "../src/client/data/pairing";
+import { clearQueryCache } from "../src/client/data/query-store";
 import { JobsRoute } from "../src/client/routes/JobsRoute";
 import { QuotaCard, QuotaView } from "../src/client/routes/QuotaCard";
 import { all, byText, mount, settle, text, unmount } from "./helpers/memory-dom";
 
-afterEach(unmount);
+afterEach(async () => {
+	await unmount();
+	clearQueryCache();
+});
 
 const NOW = Date.now();
 
@@ -20,13 +24,31 @@ const QUOTA = {
 			provider: "openai-codex",
 			label: "me@example.com",
 			state: "active",
-			windows: [{ label: "5h", usedPercent: 97, resetsAt: NOW + 3_600_000, observedAt: NOW - 60_000, state: "ok", high: true }],
+			windows: [
+				{
+					label: "5h",
+					usedPercent: 97,
+					resetsAt: NOW + 3_600_000,
+					observedAt: NOW - 60_000,
+					state: "ok",
+					high: true,
+				},
+			],
 		},
 		{
 			provider: "anthropic",
 			label: "work@example.com",
 			state: "needs_login",
-			windows: [{ label: "weekly", usedPercent: null, resetsAt: NOW - 1000, observedAt: NOW - 7_200_000, state: "stale", high: false }],
+			windows: [
+				{
+					label: "weekly",
+					usedPercent: null,
+					resetsAt: NOW - 1000,
+					observedAt: NOW - 7_200_000,
+					state: "stale",
+					high: false,
+				},
+			],
 		},
 	],
 };
@@ -34,9 +56,39 @@ const QUOTA = {
 const JOBS = {
 	now: NOW,
 	jobs: [
-		{ label: "com.example.daily", file: "com.example.daily.plist", readable: true, note: null, schedule: "daily 07:00", status: "ok", exit: "last exit ok", pid: null, lastLogWrite: NOW - 5_400_000 },
-		{ label: "com.example.broken", file: "com.example.broken.plist", readable: false, note: "unreadable plist", schedule: null, status: "not loaded", exit: null, pid: null, lastLogWrite: null },
-		{ label: "com.example.failing", file: "com.example.failing.plist", readable: true, note: null, schedule: "Mon 08:00", status: "failed", exit: "last exit 1", pid: null, lastLogWrite: NOW - 60_000 },
+		{
+			label: "com.ada.daily",
+			file: "com.ada.daily.plist",
+			readable: true,
+			note: null,
+			schedule: "daily 07:00",
+			status: "ok",
+			exit: "last exit ok",
+			pid: null,
+			lastLogWrite: NOW - 5_400_000,
+		},
+		{
+			label: "com.client.broken",
+			file: "com.client.broken.plist",
+			readable: false,
+			note: "unreadable plist",
+			schedule: null,
+			status: "not loaded",
+			exit: null,
+			pid: null,
+			lastLogWrite: null,
+		},
+		{
+			label: "com.acme.failing",
+			file: "com.acme.failing.plist",
+			readable: true,
+			note: null,
+			schedule: "Mon 08:00",
+			status: "failed",
+			exit: "last exit 1",
+			pid: null,
+			lastLogWrite: NOW - 60_000,
+		},
 	],
 	gaps: [{ start: NOW - 7_200_000, end: NOW - 6_000_000, alerted: false }],
 };
@@ -67,6 +119,16 @@ describe("Pair screen", () => {
 });
 
 describe("Quota card", () => {
+	it("links to account details with the current hash range", async () => {
+		const h = mount();
+		Object.defineProperty(window, "location", { configurable: true, value: { hash: "#/sessions?range=7d" } });
+		clearQueryCache();
+		vi.spyOn(globalThis, "fetch").mockImplementation((async () => json(QUOTA)) as typeof fetch);
+		await h.render(<QuotaCard active wide />);
+		await settle();
+		expect(h.container.querySelector('a[href="#/accounts?range=7d"]')?.textContent).toContain("Details");
+	});
+
 	it("loads /api/hub/quota and shows it on a wide screen", async () => {
 		const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((async () => json(QUOTA)) as typeof fetch);
 		const h = mount();
@@ -101,12 +163,23 @@ describe("Quota card", () => {
 	it("ages readings on the real clock and says when the hub stopped refreshing", async () => {
 		const h = mount();
 		const [codex, ...rest] = QUOTA.accounts;
-		const aged = { ...codex, windows: [{ ...codex.windows[0], observedAt: NOW - 3_660_000, resetsAt: NOW + 7_140_000 }] };
-		const old = { ...QUOTA, accounts: [aged, ...rest], generatedAt: NOW - 3_600_000, cacheAgeMs: 3_600_000, cacheStale: true };
+		const aged = {
+			...codex,
+			windows: [{ ...codex.windows[0], observedAt: NOW - 3_660_000, resetsAt: NOW + 7_140_000 }],
+		};
+		const old = {
+			...QUOTA,
+			accounts: [aged, ...rest],
+			generatedAt: NOW - 3_600_000,
+			cacheAgeMs: 3_600_000,
+			cacheStale: true,
+		};
 		await h.render(<QuotaView data={old} wide refreshError="HTTP error 500" />);
 		const body = text(h.container);
 		expect(body).toContain("has not refreshed these readings for 1h");
-		expect(body).toContain("Could not refresh quota: HTTP error 500");
+		expect(body).toContain("Could not refresh quota: it returned an error. Showing the last answer.");
+		expect(body).not.toContain("HTTP error 500");
+		expect(h.container.querySelector('[title="HTTP error 500"]')).not.toBeNull();
 		// read 61 minutes ago on the real clock (it would say "1m" if ages ran from the collection time)
 		expect(body).toContain("read 1h 1m ago");
 	});
@@ -125,18 +198,17 @@ describe("Jobs route", () => {
 		await h.render(<JobsRoute active />);
 		await settle();
 		expect(fetchMock.mock.calls[0][0]).toBe("/api/hub/jobs");
-		const rows = all(h.container, ".job-row");
-		expect(rows.map(r => r.querySelector(".job-label")?.textContent)).toEqual([
-			"com.example.failing",
-			"com.example.daily",
-			"com.example.broken",
-		]);
+		const rows = all(h.container, "tbody tr").slice(0, 3);
+		expect(rows[0]?.textContent).toContain("com.acme.failing");
+		expect(rows[1]?.textContent).toContain("com.ada.daily");
+		expect(rows[2]?.textContent).toContain("com.client.broken");
 		const body = text(h.container);
-		expect(body).toContain("Failed, exit 1");
+		expect(rows[0]?.textContent).toContain("Failed");
+		expect(rows[0]?.textContent).toContain("exit 1");
 		expect(body).toContain("unreadable plist");
-		expect(body).toContain("last log write");
+		expect(rows[0]?.querySelector("[title^='When its log was last written']")).not.toBeNull();
 		expect(body).toContain("Monitoring gaps");
-		expect(body).toContain("alert pending");
+		expect(body).toContain("Alert pending");
 		expect(rows.map(r => r.textContent).join(" ")).not.toContain("last run");
 	});
 });
@@ -183,7 +255,8 @@ describe("pairing link bootstrap", () => {
 		const { calls, location } = fakeLocation("#pair=AAAAAAAAAAAAAAAAAAAA");
 		const fetchMock = vi
 			.spyOn(globalThis, "fetch")
-			.mockImplementation((async () => json({ error: "pairing link was already used or expired" }, 403)) as typeof fetch);
+			.mockImplementation((async () =>
+				json({ error: "pairing link was already used or expired" }, 403)) as typeof fetch);
 		let rendered = 0;
 		expect(redeemPairingLink(() => rendered++)).toBe(true);
 		await Bun.sleep(20);

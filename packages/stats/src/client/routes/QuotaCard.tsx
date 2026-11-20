@@ -1,9 +1,13 @@
 import { Gauge } from "lucide-react";
+import { ALL_MACHINES, concreteMachine, useSelectedMachine } from "../app/machine";
+import { fleetQueryState, useFleetQuery } from "../data/fleet-query";
 import { getHubQuota, type HubQuota, type HubQuotaAccount } from "../data/hub";
 import { accountProblem, noBackupNotes, providerName, quotaHeadline, span, windowView } from "../data/hub-view";
+import { parseHash } from "../data/useHashRoute";
 import { useQuery } from "../data/query";
-import { Badge } from "../ui";
+import { Badge, ErrorState } from "../ui";
 import "./hub.css";
+import { plainHubReason } from "./ops-common";
 
 const REFRESH_MS = 30_000;
 
@@ -56,8 +60,8 @@ function QuotaBody({ data, refreshError }: { data: HubQuota; refreshError?: stri
 				</p>
 			)}
 			{refreshError && (
-				<p className="hub-warn quota-note" role="alert">
-					Could not refresh quota: {refreshError}. Showing the last answer.
+				<p className="hub-warn quota-note" role="alert" title={refreshError}>
+					Could not refresh quota: {plainHubReason(refreshError, { refreshing: true })}. Showing the last answer.
 				</p>
 			)}
 			<ul className="quota-list">
@@ -71,6 +75,14 @@ function QuotaBody({ data, refreshError }: { data: HubQuota; refreshError?: stri
 				</p>
 			))}
 			<p className="micro quota-note">From {data.source}; refreshes every 30 seconds.</p>
+			<a
+				className="btn"
+				data-size="sm"
+				data-variant="ghost"
+				href={`#/accounts?range=${parseHash(window.location?.hash ?? "").range}`}
+			>
+				Details →
+			</a>
 		</>
 	);
 }
@@ -116,6 +128,57 @@ export function QuotaView({
  * or when the request fails: the sessions list matters more.
  */
 export function QuotaCard({ active, wide }: { active: boolean; wide: boolean }) {
-	const quota = useQuery(["hub-quota"], ({ signal }) => getHubQuota(signal), { enabled: active, pollMs: REFRESH_MS });
+	const all = useSelectedMachine() === ALL_MACHINES;
+	const quota = useQuery(["hub-quota"], ({ signal }) => getHubQuota(concreteMachine() ?? "", signal), {
+		enabled: active && !all,
+		pollMs: REFRESH_MS,
+	});
+	const fleetQuota = useFleetQuery(
+		["hub-quota"],
+		async (machine, signal) => {
+			const data = await getHubQuota(machine, signal);
+			if (!Array.isArray(data.accounts)) throw new Error("Invalid quota response");
+			return { machine, data };
+		},
+		answers => answers,
+		{ enabled: active && all, pollMs: REFRESH_MS },
+	);
+	if (all) {
+		// Every machine definitively failed (a held machine is reconnecting, not failed): one line with Try again,
+		// which refreshes the machine list first.
+		if (fleetQueryState(fleetQuota) === "failed")
+			return (
+				<ErrorState
+					error="No machine's quota answered."
+					detail={fleetQuota.machines.map(m => `${m.name}: ${m.error}`).join("; ")}
+					onRetry={() => fleetQuota.refetch()}
+					retryLabel="Try again"
+					busy={fleetQuota.checking}
+				/>
+			);
+		return (
+			<div className="quota-fleet">
+				{fleetQuota.machines.map(machine => {
+					const answer = fleetQuota.data?.find(item => item.machine === machine.id);
+					return (
+						<section key={machine.id} className="quota-fleet-machine" aria-label={`${machine.name} quota`}>
+							<h2>{machine.name}</h2>
+							{answer ? (
+								<QuotaView data={answer.data} wide={wide} refreshError={machine.error} />
+							) : machine.lastKnown ? (
+								<p role="status">Reconnecting; quota shows once {machine.name} answers.</p>
+							) : machine.error ? (
+								<p role="status" title={machine.error}>
+									Quota unavailable: {plainHubReason(machine.error, { refreshing: true })}.
+								</p>
+							) : (
+								<p>Loading quota…</p>
+							)}
+						</section>
+					);
+				})}
+			</div>
+		);
+	}
 	return quota.data ? <QuotaView data={quota.data} wide={wide} refreshError={quota.error?.message ?? null} /> : null;
 }

@@ -1,52 +1,288 @@
-.accounts-quotas {
+.accounts-title {
 	display: flex;
-	flex-direction: column;
-	gap: 8px;
-	padding: 12px 16px 14px;
-	background: var(--bg);
-	border-top: 1px solid var(--line-1);
+	justify-content: space-between;
+	align-items: end;
+	gap: 12px;
+	flex-wrap: wrap;
 }
-
-.accounts-quota {
+.accounts-title p {
+	margin: 4px 0 0;
+}
+.accounts-attention {
+	color: var(--bad);
+}
+/* The all-machines-failed line inside the table: the sentence, then one reason per line. */
+.accounts-all-failed {
+	display: inline-flex;
+	flex-direction: column;
+	gap: 2px;
+	text-align: left;
+}
+.accounts-unreachable {
+	color: #b77d1c;
+}
+.subscriptions {
 	display: grid;
-	grid-template-columns: minmax(160px, 1fr) 180px minmax(120px, auto) minmax(120px, auto);
-	align-items: center;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
 	gap: 16px;
 }
-
-.account-routing {
-	display: grid;
-	grid-template-columns: 120px minmax(0, 1fr);
-	align-items: baseline;
-	gap: 12px;
-}
-
-.account-routing-body {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 4px 18px;
-}
-
-.account-routing-part,
-.account-routing-share {
-	display: inline-flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 6px;
-}
-
-.account-reconcile {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: baseline;
-	gap: 4px 6px;
-}
-
-.account-reconcile-header {
+.subscription {
+	min-width: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	padding: 12px 16px;
-	border-bottom: 1px solid var(--line-1);
+	gap: 14px;
+	padding: 16px;
+	border: 1px solid var(--line-2);
+	border-radius: var(--r-card);
+	background: var(--card);
+}
+.subscription[data-attention="true"] {
+	border-color: var(--bad);
+}
+.subscription header {
+	display: flex;
+	align-items: start;
+	justify-content: space-between;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.subscription header strong {
+	font-size: 15px;
+}
+.subscription header .muted {
+	overflow-wrap: anywhere;
+}
+.subscription-badge {
+	border: 1px solid var(--accent-line);
+	border-radius: 999px;
+	color: var(--accent);
+	background: var(--accent-soft);
+	font-size: 11px;
+	padding: 3px 8px;
+}
+.subscription-dots {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+.subscription-machine {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	border: 1px solid var(--line-2);
+	background: var(--raised);
+	border-radius: 999px;
+	padding: 4px 8px;
+	font-size: 12px;
+}
+.subscription-machine i {
+	width: 10px;
+	height: 10px;
+	border: 2px solid var(--ink-3);
+	border-radius: 50%;
+}
+.subscription-machine i[data-state="used"] {
+	border-color: var(--ok);
+	background: var(--ok);
+}
+.subscription-machine i[data-state="standby"] {
+	border-color: var(--ok);
+}
+.subscription-machine i[data-state="problem"] {
+	border-color: var(--bad);
+	background: var(--bad);
+}
+.subscription-machine i[data-state="removed"] {
+	border-color: var(--ink-4);
+	background: var(--ink-4);
+}
+.subscription-machine i[data-state="unreachable"] {
+	border-style: dashed;
+}
+.subscription-machine i[data-state="checking"] {
+	border-style: dotted;
+	border-color: var(--ink-3);
+}
+.subscription-machine i[data-state="limited"] {
+	border-color: var(--warn);
+	background: var(--warn);
+}
+/* Status column: the pill, then one short reason that truncates instead of wrapping. */
+.accounts-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	max-width: 100%;
+	white-space: nowrap;
+}
+.accounts-status .std-status {
+	flex: none;
+}
+.accounts-status-reason {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--ink-3);
+	font-size: 12px;
+}
+.accounts-problem {
+	display: grid;
+	gap: 6px;
+}
+.accounts-problem p {
+	margin: 0;
+}
+.accounts-error summary {
+	cursor: pointer;
+	font-size: 12px;
+	color: var(--ink-3);
+}
+.accounts-error pre {
+	margin: 6px 0 0;
+	max-height: 160px;
+	overflow: auto;
+	padding: 8px 10px;
+	border: 1px solid var(--line-1);
+	border-radius: 8px;
+	background: var(--bg);
+	font-family: var(--font-mono);
+	font-size: 11px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.subscription-quotas {
+	display: grid;
+	gap: 10px;
+}
+.subscription-quota-label {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+}
+.subscription-quota-label [data-level="warn"] {
+	color: var(--warn);
+}
+.subscription-quota-label [data-level="bad"] {
+	color: var(--bad);
+}
+.subscription-track {
+	height: 6px;
+	border-radius: 999px;
+	overflow: hidden;
+	background: var(--line-2);
+	margin: 5px 0;
+}
+.subscription-track > div {
+	height: 100%;
+	background: var(--accent-a);
+}
+.subscription-track > div[data-level="warn"] {
+	background: var(--warn);
+}
+.subscription-track > div[data-level="bad"] {
+	background: var(--bad);
+}
+.subscription small {
+	color: var(--ink-3);
+}
+.subscription-noquota {
+	border: 1px dashed var(--line-3);
+	border-radius: 8px;
+	padding: 12px;
+	color: var(--ink-3);
+}
+.subscription footer {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	margin-top: auto;
+}
+.accounts-details {
+	border: 1px solid var(--line-2);
+	border-radius: var(--r-card);
+	padding: 16px;
+}
+.accounts-details summary {
+	cursor: pointer;
+	font-weight: 600;
+}
+.accounts-details section {
+	display: grid;
+	gap: 8px;
+}
+.accounts-details h3 {
+	margin: 18px 0 0;
+}
+.accounts-details p {
+	margin: 0;
+	color: var(--ink-2);
+}
+.accounts-details .table {
+	width: 100%;
+}
+@media (max-width: 1000px) {
+	.subscriptions {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+@media (max-width: 600px) {
+	.subscriptions {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.accounts-title {
+		align-items: center;
+	}
+}
+.accounts-hours {
+	height: 80px;
+	display: flex;
+	align-items: end;
+	gap: 3px;
+}
+.accounts-hours > div {
+	flex: 1;
+	background: var(--accent-a);
+	min-width: 0;
+	border-radius: 3px 3px 0 0;
+}
+
+.quota-fleet {
+	display: flex;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+.quota-fleet-machine {
+	flex: 1 1 280px;
+	min-width: 0;
+}
+.quota-fleet-machine > h2 {
+	font-size: 14px;
+	margin: 0 0 8px;
+}
+
+.accounts-simple .table--std th[aria-label="Expand row"] {
+	width: 36px;
+}
+@container (max-width: 600px) {
+	/* The expander column of an account row; a group's note row spans the full width instead. */
+	.accounts-simple .table--std tbody tr:not(.std-group):not(.std-detail):not(.std-group-empty) td:first-child {
+		flex: 0 0 28px;
+	}
+}
+@container (max-width: 600px) {
+	.accounts-simple .table--std table,
+	.accounts-simple .table--std tbody,
+	.accounts-simple .table--std .std-group,
+	.accounts-simple .table--std .std-group th,
+	.accounts-simple .table--std .std-detail,
+	.accounts-simple .table--std .std-detail td {
+		display: block;
+		width: 100%;
+		box-sizing: border-box;
+	}
+	.accounts-simple .table--std tbody tr:not(.std-group):not(.std-detail) {
+		width: 100%;
+		box-sizing: border-box;
+	}
 }

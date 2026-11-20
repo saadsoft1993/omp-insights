@@ -102,6 +102,7 @@ export function loadGateways(modelsPath = path.join(getAgentDir(), "models.yml")
 
 /** Live state of an account: needs_login and blocks come from agent.db, the rest from the last minute's requests. */
 export function liveAccountState(account: Pick<AccountStats, "status">, rpm: number): LiveTargetState {
+	if (account.status === "removed") return "removed";
 	if (account.status === "needs_login") return "needs_login";
 	if (account.status === "blocked") return "rate_limited";
 	return rpm > 0 ? "active" : "quiet";
@@ -112,7 +113,7 @@ export function hasQuotaWarning(account: Pick<AccountStats, "quotas">): boolean 
 	return account.quotas.some(q => (q.usedFraction ?? 0) >= QUOTA_WARNING_FRACTION);
 }
 
-/** omp's sessions folder name (`-projects-acme-shop`) as a short project label. */
+/** Render omp's sessions folder name as a short project label. */
 export function projectLabel(folder: string): string {
 	let label = folder.replace(/^-+|-+$/g, "");
 	for (const prefix of ["projects-", "private-tmp-", "Users-"]) {

@@ -1,3 +1,7 @@
+import { ALL_MACHINES, concreteMachine, useSelectedMachine } from "../app/machine";
+import { MissingMachineNumbers } from "../app/MachineBanner";
+import { fleetQueryView, useFleetQuery } from "../data/fleet-query";
+import { mergeRequests } from "../data/fleet-merge";
 import { useMemo, useState } from "react";
 import { getRecentRequests } from "../api";
 import {
@@ -36,7 +40,7 @@ import {
 export interface RequestsRouteProps {
 	active: boolean;
 	range: TimeRange;
-	onRequestClick: (id: number) => void;
+	onRequestClick: (id: number, machine?: string) => void;
 }
 
 /** How many of the newest requests to load; "Load more" steps through these. */
@@ -47,7 +51,19 @@ type StatusFilter = "all" | RequestStatus;
 export function RequestsRoute({ active, range, onRequestClick }: RequestsRouteProps) {
 	const [step, setStep] = useState(0);
 	const limit = LOAD_STEPS[step];
-	const log = useQuery(["requests-log", limit], ({ signal }) => getRecentRequests(limit, signal), { enabled: active });
+	const all = useSelectedMachine() === ALL_MACHINES;
+	const single = useQuery(
+		["requests-log", limit],
+		({ signal }) => getRecentRequests(limit, signal, concreteMachine()),
+		{ enabled: active && !all },
+	);
+	const fleet = useFleetQuery(
+		["requests-log", limit],
+		async (machine, signal) => ({ machine, data: await getRecentRequests(limit, signal, machine) }),
+		answers => mergeRequests(answers, limit),
+		{ enabled: active && all },
+	);
+	const log = all ? fleetQueryView(single, fleet) : single;
 	const [search, setSearch] = useState("");
 	const [status, setStatus] = useState<StatusFilter>("all");
 	const meta = rangeMeta(range);
@@ -108,6 +124,7 @@ export function RequestsRoute({ active, range, onRequestClick }: RequestsRoutePr
 				title="Requests"
 				description={`Every model call omp made in ${meta.windowLabel}, newest first. Open a row for its full payload.`}
 			/>
+			{all && <MissingMachineNumbers machines={fleet.machines} />}
 
 			<QueryView query={log} skeleton={<Skeleton height={96} style={{ borderRadius: 12 }} />}>
 				{() => (
@@ -190,12 +207,17 @@ export function RequestsRoute({ active, range, onRequestClick }: RequestsRoutePr
 					) : undefined
 				}
 			>
-				<QueryView query={log} skeleton={<TableSkeleton rows={12} />}>
+				<QueryView hideError query={log} skeleton={<TableSkeleton rows={12} />}>
 					{() => (
 						<Table
 							rows={filtered}
-							rowKey={row => row.id ?? `${row.sessionFile}:${row.entryId}`}
-							onRowClick={row => row.id !== undefined && onRequestClick(row.id)}
+							rowKey={row =>
+								`${(row as MessageStats & { machine?: string }).machine ?? ""}:${row.id ?? `${row.sessionFile}:${row.entryId}`}`
+							}
+							onRowClick={row =>
+								row.id !== undefined &&
+								onRequestClick(row.id, (row as MessageStats & { machine?: string }).machine)
+							}
 							columns={REQUEST_COLUMNS}
 							initialSort={{ key: "time", dir: "desc" }}
 							limit={100}
@@ -219,7 +241,12 @@ const REQUEST_COLUMNS: readonly Column<MessageStats>[] = [
 		key: "model",
 		header: "Model",
 		sort: row => row.model,
-		render: row => <LabelCell primary={<span className="mono">{row.model}</span>} secondary={row.provider} />,
+		render: row => (
+			<LabelCell
+				primary={<span className="mono">{row.model}</span>}
+				secondary={[row.provider, (row as MessageStats & { machine?: string }).machine].filter(Boolean).join(" · ")}
+			/>
+		),
 	},
 	{
 		key: "time",

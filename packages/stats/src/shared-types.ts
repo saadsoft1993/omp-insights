@@ -32,6 +32,11 @@ export interface AggregatedStats {
 	 * (0-1; negative when cache writes cost more than reads save).
 	 */
 	cacheSavings: number;
+	noCacheInputCost: number;
+	cachedPromptCost: number;
+	durationN: number;
+	ttftN: number;
+	tpsN: number;
 	/** Total cost */
 	totalCost: number;
 	/** Requests with token usage but no public-equivalent subscription price. */
@@ -78,6 +83,11 @@ export interface TimeSeriesPoint {
 	tokens: number;
 	/** Total cost */
 	cost: number;
+	durationN: number;
+	ttftN: number;
+	tpsN: number;
+	noCacheInputCost: number;
+	cachedPromptCost: number;
 }
 
 /**
@@ -106,6 +116,8 @@ export interface ModelPerformancePoint {
 	provider: string;
 	/** Request count */
 	requests: number;
+	ttftN: number;
+	tpsN: number;
 	/** Average TTFT in ms */
 	avgTtft: number | null;
 	/** Average tokens per second */
@@ -888,6 +900,7 @@ export interface ProviderAggregate {
 	/** Requests excluded because no public-equivalent subscription price exists. */
 	unpricedRequests: number;
 	totalPremiumRequests: number;
+	tpsN: number;
 	avgTokensPerSecond: number | null;
 }
 
@@ -1029,7 +1042,7 @@ export interface ProviderWindowStats {
  * selected range), `idle` (requests, none in the last 24 hours), `never` (no
  * request recorded).
  */
-export type AccountStatus = "needs_login" | "blocked" | "active" | "idle" | "never";
+export type AccountStatus = "removed" | "needs_login" | "blocked" | "active" | "idle" | "never";
 
 /** Active rate-limit block on one of an account's credentials. */
 export interface AccountBlock {
@@ -1230,7 +1243,7 @@ export interface AccountFlowStats {
  * last minute; one may still be in flight. `rate_limited` means an active block
  * in agent.db is holding traffic back; a nearly used quota is only a warning.
  */
-export type LiveTargetState = "active" | "quiet" | "rate_limited" | "needs_login";
+export type LiveTargetState = "active" | "quiet" | "rate_limited" | "needs_login" | "removed";
 
 /**
  * A subagent's state, from its transcript: `running` (still writing, no exit),
@@ -1378,6 +1391,12 @@ export interface SessionSummary {
 	/** Decoded project path (e.g. `/work/pi`). */
 	folder: string;
 	title: string | null;
+	sessionId: string | null;
+	cwd: string | null;
+	firstMessage: string | null;
+	parentSession: string | null;
+	continuationOf: string | null;
+	missing: boolean;
 	/** ms epoch of first activity. */
 	startedAt: number;
 	/** ms epoch of last activity, children included. */
@@ -1449,6 +1468,8 @@ export interface TraceTrack {
 	file: string;
 	/** Sorted by start. */
 	spans: TraceSpan[];
+	/** Set when this payload left the child track's spans out (large traces): their count. Load them from /api/session/trace-track. Never set on "main" or on offline snapshots. */
+	omittedSpans?: number;
 	markers: TraceMarker[];
 }
 
@@ -1502,4 +1523,8 @@ export interface SessionTrace {
 	/** DFS order, main first. */
 	tracks: TraceTrack[];
 	summary: TraceSummary;
+}
+
+export interface SessionTraceTrackResponse {
+	track: TraceTrack;
 }

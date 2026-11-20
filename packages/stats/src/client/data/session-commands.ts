@@ -1,6 +1,6 @@
 /** Rules for the Sessions page's session commands (model, thinking level, mode, compact): pure, so they are tested without a DOM. */
 import { ApiError } from "../api";
-import type { HubModelRef, HubSessionInfo, ModeStatus, SessionCommand } from "./hub";
+import type { HubModelRef, HubSessionAdvisor, HubSessionGoal, HubSessionInfo, ModeStatus, SessionCommand } from "./hub";
 
 /** Counted in UTF-16 code units, the same way the plugin counts. */
 export const MAX_INSTRUCTIONS_CHARS = 2000;
@@ -108,6 +108,25 @@ export function commandConfirm(
 				label: "Change level",
 				question: `Set this session's thinking level to ${command.args.level}?`,
 			};
+		case "set-advisor":
+			if (command.args.enabled === true)
+				return {
+					title: "Turn on the advisor?",
+					question:
+						"A second model will review each turn of this session and send extra requests. It stays on until you turn it off or omp restarts.",
+					label: "Turn on",
+				};
+			if (command.args.enabled === false)
+				return {
+					title: "Turn off the advisor?",
+					question: "The advisor stops for this session. New sessions start with it off.",
+					label: "Turn off",
+				};
+			return {
+				title: "Change the advisor model?",
+				question: `The advisor of this session will use ${command.args.provider}/${command.args.id} until omp restarts.`,
+				label: "Change",
+			};
 		case "set-mode": {
 			const { mode, action } = command.args;
 			const verb =
@@ -139,6 +158,12 @@ export function commandDone(command: SessionCommand): string {
 			return `Model is now ${command.args.provider}/${command.args.id}.`;
 		case "set-thinking":
 			return `Thinking level is now ${command.args.level}.`;
+		case "set-advisor":
+			return command.args.enabled === true
+				? "Advisor on"
+				: command.args.enabled === false
+					? "Advisor off"
+					: `Advisor model: ${command.args.provider}/${command.args.id}`;
 		case "set-mode":
 			return `Done: ${commandConfirm(command).title.toLowerCase()}.`;
 	}
@@ -149,6 +174,37 @@ export function currentModelKey(info: HubSessionInfo): string {
 	if (!info.model) return "";
 	const key = modelKey(info.model);
 	return info.models.some(m => modelKey(m) === key) ? key : "";
+}
+
+export function advisorSummary(advisor: HubSessionAdvisor): string {
+	if (!advisor.enabled) return "Off";
+	return `On · ${advisor.model ? modelKey(advisor.model) : "no model"}${advisor.advisors
+		.filter(a => a.status !== "running")
+		.map(a => ` · ${a.name} ${a.status.replace("_", " ")}`)
+		.join("")}`;
+}
+
+function parseAdvisor(raw: unknown): HubSessionAdvisor | null {
+	if (typeof raw !== "object" || raw === null) return null;
+	const a = raw as Record<string, unknown>;
+	if (typeof a.enabled !== "boolean" || typeof a.active !== "boolean" || !Array.isArray(a.advisors)) return null;
+	const model = a.model as Record<string, unknown> | null;
+	const validModel =
+		model && typeof model === "object" && typeof model.provider === "string" && typeof model.id === "string"
+			? { provider: model.provider, id: model.id }
+			: null;
+	const advisors: HubSessionAdvisor["advisors"] = [];
+	for (const entry of a.advisors) {
+		if (
+			!entry ||
+			typeof entry !== "object" ||
+			typeof entry.name !== "string" ||
+			!["running", "paused", "quota_exhausted", "error", "no_model"].includes(entry.status)
+		)
+			return null;
+		advisors.push({ name: entry.name, status: entry.status });
+	}
+	return { enabled: a.enabled, active: a.active, model: validModel, advisors };
 }
 
 /** The plugin's answer, or null when it is not the shape the page relies on (an older hub or a wrong reply). */
@@ -168,6 +224,7 @@ export function parseSessionInfo(raw: unknown): HubSessionInfo | null {
 		thinkingLevel: r.thinkingLevel ?? null,
 		thinkingLevels: r.thinkingLevels,
 		models: r.models,
+		advisor: parseAdvisor(r.advisor),
 		mode: { plan: !!r.mode.plan, goal: !!r.mode.goal, loop: !!r.mode.loop, vibe: !!r.mode.vibe },
 		modeStatus: {
 			plan: status(given.plan, !!r.mode.plan),
@@ -176,5 +233,16 @@ export function parseSessionInfo(raw: unknown): HubSessionInfo | null {
 			loop: status(given.loop, !!r.mode.loop),
 		},
 		compacting: r.compacting === true,
+		goal: parseGoal(r.goal),
+		interruptMode: r.interruptMode === "immediate" || r.interruptMode === "wait" ? r.interruptMode : null,
+		planNotes: r.planNotes ?? null,
 	};
+}
+
+/** The goal objective as text, or null for no goal, an older plugin, or a value that isn't the expected shape. */
+function parseGoal(raw: unknown): HubSessionGoal | null {
+	if (typeof raw !== "object" || raw === null) return null;
+	const { objective, tokenBudget } = raw as { objective?: unknown; tokenBudget?: unknown };
+	if (typeof objective !== "string" || !objective.trim()) return null;
+	return typeof tokenBudget === "number" && Number.isFinite(tokenBudget) ? { objective, tokenBudget } : { objective };
 }

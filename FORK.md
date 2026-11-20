@@ -27,9 +27,9 @@ All of it lives in the stats dashboard (`omp stats`):
   change a session's model, thinking level, plan mode or goal, answer an open plan review, a terminal panel and a quota card),
   **Relay** (open a session through a private relay), **Alerts** (phone alerts), **Jobs** (the background jobs the hub watches,
   with schedule, status and last log write) and **Devices** (paired browsers and pairing links), plus a **Pair** screen for
-  browsers that are not paired yet. These pages call a local "hub" through its `/api/hub/*` API from the same origin. With a
-  plain `omp stats` there is no hub (those requests get 404), so these pages have nothing to show; the other pages are not
-  affected.
+  browsers that are not paired yet. These pages, and the report pages of a **Control center** group, call a local "hub" through its
+  `/api/hub/*` API from the same origin. With a plain `omp stats` there is no hub, so the dashboard hides them; the other pages
+  are not affected.
 - **Proxy mode** (see `packages/stats/src/proxy-gate.ts`). It works only when the dashboard is started through the stats
   package's own entrypoint, for example
   `OMP_STATS_PROXY_KEY_FILE=/path/to/key bun packages/stats/src/index.ts --port 3847`. The dashboard then answers only a local
@@ -53,58 +53,52 @@ Branches:
 To see the dashboard changes, compare `packages/stats` with the upstream commit that `insights` last merged (the second parent
 of its newest merge commit). Other branches in this repository are older snapshots and are not updated.
 
-## Run it
+## Run the dashboard yourself
 
-You need [Bun](https://bun.sh) 1.4.4 or newer (the repository pins `bun@>=1.4.4`) and the native addon for your platform.
-This was tried with Bun 1.4.4 on macOS (Apple silicon).
+You need git, [Bun](https://bun.sh) 1.4.4 or newer (the repository pins `bun@>=1.4.4`), npm (only to download the native
+addon) and `tar`. Tested with Bun 1.4.4 on Linux x64 and macOS arm64; other platforms are untested.
 
 ```bash
-# A shallow clone is enough to run it and much faster: a full clone of this repository carries upstream's whole history
-# (a full clone stalled for 15 minutes on one machine, a shallow one took about 30 seconds).
-git clone --depth 1 https://github.com/saadsoft1993/omp-insights.git
+# A shallow clone is enough and much faster: a full clone carries upstream's whole history.
+git clone --depth 1 --branch insights https://github.com/saadsoft1993/omp-insights.git
 cd omp-insights
 
 # 1. Dependencies. --ignore-scripts skips the repository's "prepare" step, which regenerates the HTML export viewer
-#    (not needed for the dashboard). Without the flag: leave the CI variable unset, and on macOS undo the rewrite
-#    of packages/coding-agent/src/export/html/viewer.generated.json afterwards with `git checkout` on that file.
+#    (not needed for the dashboard).
 bun install --frozen-lockfile --ignore-scripts
 
-# 2. Native addon (see below), then:
-bun packages/stats/src/index.ts --port 3847      # the dashboard on its own
-bun packages/coding-agent/src/cli.ts stats --port 3847   # the same through the omp CLI (what `omp stats` runs)
+# 2. The native addon for your platform, at the version the repository pins. <platform> is darwin-arm64, darwin-x64,
+#    linux-x64 or linux-arm64 (the packages are listed as @oh-my-pi/pi-natives-* on npm).
+platform=linux-x64
+version=$(bun -e 'console.log(require("./packages/natives/package.json").version)')
+repo=$PWD
+(cd "$(mktemp -d)" && npm pack --silent "@oh-my-pi/pi-natives-$platform@$version" &&
+  tar xzf oh-my-pi-pi-natives-*.tgz && cp package/pi_natives.*.node "$repo/packages/natives/native/")
+
+# 3. The dashboard.
+bun packages/stats/src/index.ts --port 3850 --host 127.0.0.1
 ```
 
-Open the printed `http://127.0.0.1:<port>` address. The dashboard reads `~/.omp/agent/sessions/` and `~/.omp/agent/agent.db`, keeps
-its own database in `~/.omp/stats.db`, and listens on `127.0.0.1` unless you pass `--host`. Other options: `--json` (print the
-statistics and exit), `--sync` (ingest sessions and print a summary), `--help`. The page client is built from source when the
-server starts, so there is no separate build step. A one-time re-parse of your history fills in the account attribution the
-first time a database from before this fork is opened.
+Open `http://127.0.0.1:3850`. On x64 the addon package holds a `baseline` and a `modern` build; copy both, the loader picks
+one. Without the addon nothing starts (the error is `Failed to load pi_natives native addon`). You can also build it from
+source with `bun run build` in `packages/natives`, which needs the pinned Rust toolchain from `rust-toolchain.toml` (not tried
+for this fork; see upstream's `packages/natives/README.md`).
 
-To try it without touching your own data, run it with a scratch home directory and a free port:
+The dashboard reads `~/.omp/agent/sessions/` and `~/.omp/agent/agent.db`, keeps its own database in `~/.omp/stats.db`, and
+listens on `127.0.0.1` unless you pass another `--host`. `bun packages/coding-agent/src/cli.ts stats --port 3850` runs the
+same dashboard through the omp CLI (what `omp stats` runs). Other options: `--json` (print the statistics and exit), `--sync`
+(ingest sessions and print a summary), `--help`. The page client is built from source when the server starts, so there is no
+separate build step. A one-time re-parse of your history fills in the account attribution the first time a database from
+before this fork is opened.
+
+The Usage, Activity and Insights pages work on their own. The Control, Control center and Settings pages appear only when the
+dashboard is served behind an omp hub; without one they are hidden.
+
+To try it without touching your own data, use a scratch home directory:
 
 ```bash
-HOME=$(mktemp -d) bun packages/stats/src/index.ts --port 0
+HOME=$(mktemp -d) bun packages/stats/src/index.ts --port 3850 --host 127.0.0.1
 ```
-
-### Native addon
-
-omp's core pieces (file search, SQLite locking and more) are a native (Rust) addon. Nothing starts without it (the error is
-`Failed to load pi_natives native addon`). Pick one:
-
-- **Download the published addon** (no Rust needed). The version must match the repository's `packages/natives/package.json`,
-  which moves with upstream, so the commands below read it from there. Run them from the repository root, and replace
-  `darwin-arm64` with your platform and architecture (the packages are listed as `@oh-my-pi/pi-natives-*` on npm):
-
-  ```bash
-  version=$(bun -e 'console.log(require("./packages/natives/package.json").version)')
-  repo=$PWD
-  cd "$(mktemp -d)" && npm pack "@oh-my-pi/pi-natives-darwin-arm64@$version" && tar xzf oh-my-pi-pi-natives-*.tgz
-  cp package/*.node "$repo/packages/natives/native/"
-  ```
-
-  On x64 Linux copy every `*.node` file; the loader picks the `baseline` or `modern` variant itself.
-- **Build it** from source: `bun run build` in `packages/natives`. This needs the pinned Rust toolchain from
-  `rust-toolchain.toml`. (Not tried for this fork's documentation; follow upstream's `packages/natives/README.md`.)
 
 ## Checks
 
@@ -114,7 +108,7 @@ bun run check        # oxlint, oxfmt, type checks for the server and for the pag
 bun test
 ```
 
-`bun test` needs the native addon (see above). Point `HOME` at a scratch directory if you do not want the tests near your own
+`bun test` needs the native addon (see "Run the dashboard yourself"). Point `HOME` at a scratch directory if you do not want the tests near your own
 `~/.omp`.
 
 ## Relation to upstream

@@ -1,0 +1,143 @@
+{
+ "accounts": [
+  {
+   "key": "anthropic/email:team@example.com|org:648daba0-2fef-4654-b922-13353a2e7536",
+   "provider": "anthropic",
+   "label": "team@example.com",
+   "email": "team@example.com",
+   "orgId": "648daba0-2fef-4654-b922-13353a2e7536",
+   "credentialType": "oauth",
+   "credentialIds": [
+    2
+   ],
+   "status": "active",
+   "disabledCause": null,
+   "blocks": [],
+   "requests": 2,
+   "failedRequests": 2,
+   "totalTokens": 0,
+   "totalCost": 0,
+   "unpricedRequests": 0,
+   "lastUsed": 1794925207924,
+   "requestShare": 1,
+   "tokenShare": 0,
+   "quotas": [
+    {
+     "limitId": "anthropic:5h",
+     "label": "Claude 5 Hour",
+     "windowLabel": "5 Hour",
+     "usedFraction": null,
+     "status": null,
+     "resetsAt": 1794927599843,
+     "recordedAt": 1794925068982
+    },
+    {
+     "limitId": "anthropic:7d",
+     "label": "Claude 7 Day",
+     "windowLabel": "7 Day",
+     "usedFraction": 0.45,
+     "status": "ok",
+     "resetsAt": 1795370399844,
+     "recordedAt": 1794925068982
+    },
+    {
+     "limitId": "anthropic:7d:fable",
+     "label": "Claude 7 Day (Fable)",
+     "windowLabel": "7 Day",
+     "usedFraction": 0.08,
+     "status": "ok",
+     "resetsAt": 1795370399844,
+     "recordedAt": 1794925068982
+    }
+   ],
+   "recentRequests": 0,
+   "recentShare": 0,
+   "servingNow": false,
+   "servedLatestNewSession": false
+  },
+  {
+   "key": "anthropic-2/account:9cc45cad-5c97-4703-9096-1e3f4b8132de",
+   "provider": "anthropic-2",
+   "label": "account:9cc45cad-5c97-4703-9096-1e3f4b8132de",
+   "email": null,
+   "orgId": null,
+   "credentialType": "oauth",
+   "credentialIds": [
+    3
+   ],
+   "status": "never",
+   "disabledCause": null,
+   "blocks": [],
+   "requests": 0,
+   "failedRequests": 0,
+   "totalTokens": 0,
+   "totalCost": 0,
+   "unpricedRequests": 0,
+   "lastUsed": null,
+   "requestShare": 0,
+   "tokenShare": 0,
+   "quotas": [],
+   "recentRequests": 0,
+   "recentShare": 0,
+   "servingNow": false,
+   "servedLatestNewSession": false
+  },
+  {
+   "key": "openai-codex/email:ada@example.com|org:51d26abb-8d2b-4337-b4dc-4c42a5327021",
+   "provider": "openai-codex",
+   "label": "ada@example.com",
+   "email": "ada@example.com",
+   "orgId": "51d26abb-8d2b-4337-b4dc-4c42a5327021",
+   "credentialType": "oauth",
+   "credentialIds": [
+    1
+   ],
+   "status": "never",
+   "disabledCause": null,
+   "blocks": [],
+   "requests": 0,
+   "failedRequests": 0,
+   "totalTokens": 0,
+   "totalCost": 0,
+   "unpricedRequests": 0,
+   "lastUsed": null,
+   "requestShare": 0,
+   "tokenShare": 0,
+   "quotas": [
+    {
+     "limitId": "openai-codex:primary",
+     "label": "7 days",
+     "windowLabel": "7 days",
+     "usedFraction": 0.12,
+     "status": "ok",
+     "resetsAt": 1795505345000,
+     "recordedAt": 1794925068480
+    }
+   ],
+   "recentRequests": 0,
+   "recentShare": 0,
+   "servingNow": false,
+   "servedLatestNewSession": false
+  }
+ ],
+ "unattributed": [
+  {
+   "provider": "anthropic",
+   "requests": 1,
+   "failedRequests": 0,
+   "totalTokens": 0,
+   "totalCost": 0,
+   "unpricedRequests": 0,
+   "lastUsed": 1794925270094
+  }
+ ],
+ "providerTotals": [
+  {
+   "provider": "anthropic",
+   "requests": 3,
+   "accountRequests": 2,
+   "unattributedRequests": 1
+  }
+ ],
+ "routing": []
+}

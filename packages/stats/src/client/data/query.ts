@@ -17,7 +17,10 @@
 
 import { toError } from "@oh-my-pi/pi-utils/type-guards";
 import { startTransition, useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { machineKey, useSelectedMachine } from "../app/machine";
 import { currentLiveVersion, useLiveVersion } from "./live";
+import { usePageActive } from "./page-active";
+import { registerPolling } from "./page-polling";
 import { cachedEntry, type Inflight, inflightRequest, loadQuery, type QueryFetcher, releaseQuery } from "./query-store";
 
 /** Minimum spacing between live-driven refetches of one query. */
@@ -28,6 +31,18 @@ export interface QueryOptions {
 	enabled?: boolean;
 	/** Additionally refetch on this interval while enabled and the tab is visible. */
 	pollMs?: number;
+	/** Keep showing the previous key's data while a new key loads. Default true; false for data that must never be shown under another key. */
+	retain?: boolean;
+	/**
+	 * `machine` (default): the data belongs to the machine selected in the header, so the key carries its id and
+	 * another machine's data is never shown under it. `local`: the hub's own data, the same for every selection.
+	 */
+	scope?: "machine" | "local";
+	/**
+	 * Whether this query's polling means the page's numbers refresh by themselves (the Not live explanation). False
+	 * for chrome and metadata (machine name, capabilities). Default true.
+	 */
+	countsAsPagePolling?: boolean;
 }
 
 export interface QueryResult<T> {
@@ -42,6 +57,8 @@ export interface QueryResult<T> {
 	refreshing: boolean;
 	/** When the shown data was fetched. */
 	updatedAt: number | null;
+	/** It asks again by itself (`pollMs` while enabled): an error clears without Try again. */
+	polling: boolean;
 	refetch: () => void;
 }
 
@@ -55,9 +72,12 @@ export function prefetchQuery<T>(key: readonly unknown[], fetcher: () => Promise
 }
 
 export function useQuery<T>(key: readonly unknown[], fetcher: QueryFetcher<T>, options?: QueryOptions): QueryResult<T> {
-	const keyString = JSON.stringify(key);
+	const selected = useSelectedMachine();
+	const machine = options?.scope === "local" ? undefined : selected;
+	const keyString = JSON.stringify(machineKey(key, machine));
 	const enabled = options?.enabled ?? true;
 	const pollMs = options?.pollMs;
+	const pageActive = usePageActive();
 	const version = useLiveVersion(enabled);
 
 	const [, rerender] = useReducer((n: number) => n + 1, 0);
@@ -69,7 +89,9 @@ export function useQuery<T>(key: readonly unknown[], fetcher: QueryFetcher<T>, o
 	fetcherRef.current = fetcher;
 	const keyRef = useRef(keyString);
 	keyRef.current = keyString;
-	const lastShown = useRef<{ key: string; data: unknown; updatedAt: number } | null>(null);
+	const lastShown = useRef<{ key: string; data: unknown; updatedAt: number; machine: string | undefined } | null>(
+		null,
+	);
 	const lastFetchAt = useRef(0);
 	/** The request this query currently waits on. */
 	const waiting = useRef<{ key: string; request: Inflight } | null>(null);
@@ -138,19 +160,26 @@ export function useQuery<T>(key: readonly unknown[], fetcher: QueryFetcher<T>, o
 		return () => clearTimeout(timer);
 	}, [keyString, enabled, version, settled, run, leave]);
 
+	const countsForPage = (options?.countsAsPagePolling ?? true) && pageActive;
 	useEffect(() => {
 		if (!enabled || !pollMs) return;
+		const unregister = countsForPage ? registerPolling(pollMs) : () => {};
 		const interval = setInterval(() => {
 			if (!document.hidden) run(keyRef.current);
 		}, pollMs);
-		return () => clearInterval(interval);
-	}, [enabled, pollMs, run]);
+		return () => {
+			clearInterval(interval);
+			unregister();
+		};
+	}, [enabled, pollMs, run, countsForPage]);
 
 	const refetch = useCallback(() => run(keyRef.current), [run]);
 
 	const entry = cachedEntry(keyString);
-	if (entry) lastShown.current = { key: keyString, data: entry.data, updatedAt: entry.updatedAt };
-	const shown = lastShown.current;
+	if (entry) lastShown.current = { key: keyString, data: entry.data, updatedAt: entry.updatedAt, machine };
+	// A key change keeps the old data on screen, but never across machines.
+	if (lastShown.current && lastShown.current.machine !== machine) lastShown.current = null;
+	const shown = options?.retain === false && lastShown.current?.key !== keyString ? null : lastShown.current;
 	const currentError = error?.key === keyString ? error.error : null;
 
 	return {
@@ -160,6 +189,7 @@ export function useQuery<T>(key: readonly unknown[], fetcher: QueryFetcher<T>, o
 		stale: !!shown && shown.key !== keyString,
 		refreshing,
 		updatedAt: shown?.updatedAt ?? null,
+		polling: enabled && !!pollMs,
 		refetch,
 	};
 }

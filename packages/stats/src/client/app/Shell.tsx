@@ -1,16 +1,19 @@
 import { Menu } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { getHubVersion } from "../data/hub";
+import { getHubReports, getHubVersion } from "../data/hub";
+import { useHubPresent } from "../data/hub-presence";
 import { useQuery } from "../data/query";
 import { rangeMeta, TIME_RANGES } from "../data/range";
 import { useLiveStatus } from "../data/live";
 import type { TimeRange } from "../types";
-import { Segmented } from "../ui";
+import { EmptyState, Segmented } from "../ui";
 import { CloseButton } from "./CloseButton";
 import { isDialogOpen, isTypingTarget } from "./keys";
 import { LiveChip } from "./LiveChip";
 import { MachineBanner } from "./MachineBanner";
-import { type DashboardSection, NAV } from "./nav";
+import { useFleet } from "./machine";
+import { MachineSelect } from "./MachineSelect";
+import { type DashboardSection, type NavVisibility, NAV, navItem, shortcutSection } from "./nav";
 import { ThemeToggle } from "./ThemeToggle";
 
 export interface ShellProps {
@@ -34,9 +37,43 @@ const RANGE_OPTIONS = TIME_RANGES.map((range, i) => ({
  */
 export function Shell({ section, onSectionChange, range, onRangeChange, children }: ShellProps) {
 	const [menuOpen, setMenuOpen] = useState(false);
+	const [settingsOpen, setSettingsOpen] = useState(() => {
+		try {
+			return localStorage.getItem("omp.nav.settings") === "open";
+		} catch {
+			return false;
+		}
+	});
+	useEffect(() => {
+		if (NAV.find(group => group.heading === "Settings")?.items.some(item => item.id === section)) {
+			setSettingsOpen(true);
+		}
+	}, [section]);
+	const toggleSettings = () => {
+		setSettingsOpen(open => {
+			const next = !open;
+			try {
+				localStorage.setItem("omp.nav.settings", next ? "open" : "closed");
+			} catch {
+				// Navigation still works when storage is unavailable.
+			}
+			return next;
+		});
+	};
 	const scrolled = useScrolled();
 	const { sync } = useLiveStatus();
-	useShortcuts(onSectionChange, onRangeChange);
+	const fleet = useFleet();
+	const hubPresent = useHubPresent();
+	const reports = useQuery(["hub-reports"], ({ signal }) => getHubReports(signal), {
+		enabled: hubPresent,
+		scope: "local",
+	});
+	const visibility: NavVisibility = {
+		reports: new Set(reports.error ? [] : (reports.data?.reports?.map(report => report.id) ?? [])),
+	};
+	const visible = (item: (typeof NAV)[number]["items"][number]) =>
+		(!item.fleetOnly || !!fleet) && (!item.hubOnly || hubPresent) && (!item.visible || item.visible(visibility));
+	useShortcuts(onSectionChange, onRangeChange, fleet !== null, hubPresent, visibility);
 
 	const go = (next: DashboardSection) => {
 		onSectionChange(next);
@@ -49,7 +86,7 @@ export function Shell({ section, onSectionChange, range, onRangeChange, children
 	return (
 		<>
 			<div className="shell-ambient" />
-			<header className="topbar" data-scrolled={scrolled}>
+			<header className="topbar topbar-wrap-narrow" data-scrolled={scrolled}>
 				<button
 					type="button"
 					className="btn topbar-menu"
@@ -75,9 +112,9 @@ export function Shell({ section, onSectionChange, range, onRangeChange, children
 					<span className="topbar-slash">/</span>
 					<span className="topbar-title">stats</span>
 				</div>
-				<MachineBanner />
+				{fleet ? <MachineSelect /> : <MachineBanner />}
 				<div className="topbar-spacer" />
-				<div className="topbar-actions">
+				<div className="topbar-actions topbar-actions-narrow">
 					<span className="topbar-hide-narrow">
 						<LiveChip />
 					</span>
@@ -98,27 +135,41 @@ export function Shell({ section, onSectionChange, range, onRangeChange, children
 
 			{menuOpen && <div className="drawer-scrim" onClick={() => setMenuOpen(false)} role="presentation" />}
 			<nav className="sidebar" data-open={menuOpen} aria-label="Pages">
-				{NAV.map(group => (
+				{NAV.filter(group => group.items.some(visible)).map(group => (
 					<div key={group.heading} className="nav-group">
-						<div className="nav-heading">{group.heading}</div>
-						{group.items.map(item => (
+						{group.heading === "Settings" ? (
 							<button
-								key={item.id}
 								type="button"
-								className="nav-row"
-								data-active={item.id === section}
-								aria-current={item.id === section ? "page" : undefined}
-								onClick={() => go(item.id)}
+								className="nav-heading nav-settings-toggle"
+								aria-expanded={settingsOpen}
+								onClick={toggleSettings}
 							>
-								<item.icon size={15} />
-								<span className="nav-row-label">{item.label}</span>
-								<kbd>G {item.hotkey.toUpperCase()}</kbd>
+								Settings <span aria-hidden="true">{settingsOpen ? "▾" : "▸"}</span>
 							</button>
-						))}
+						) : (
+							<div className="nav-heading">{group.heading}</div>
+						)}
+						{(group.heading !== "Settings" || settingsOpen) &&
+							group.items.filter(visible).map(item => (
+								<button
+									key={item.id}
+									type="button"
+									className="nav-row"
+									data-active={item.id === section}
+									aria-current={item.id === section ? "page" : undefined}
+									onClick={() => go(item.id)}
+								>
+									<item.icon size={15} />
+									<span className="nav-row-label" title={item.label}>
+										{item.label}
+									</span>
+									{item.hotkey && <kbd>G {item.hotkey.toUpperCase()}</kbd>}
+								</button>
+							))}
 					</div>
 				))}
 				<div className="sidebar-foot micro">
-					<HubVersionLine />
+					{hubPresent && <HubVersionLine />}
 					<span>
 						<span className="kbd">1</span>–<span className="kbd">8</span> range
 					</span>
@@ -129,7 +180,13 @@ export function Shell({ section, onSectionChange, range, onRangeChange, children
 			</nav>
 
 			<main className="shell-panel">
-				<div className="shell-content">{children}</div>
+				<div className="shell-content">
+					{!hubPresent && navItem(section).hubOnly ? (
+						<EmptyState title="This page needs the omp hub, which isn't running behind this dashboard." />
+					) : (
+						children
+					)}
+				</div>
 			</main>
 		</>
 	);
@@ -146,7 +203,13 @@ function useScrolled(): boolean {
 	return scrolled;
 }
 
-function useShortcuts(onSection: (section: DashboardSection) => void, onRange: (range: TimeRange) => void): void {
+function useShortcuts(
+	onSection: (section: DashboardSection) => void,
+	onRange: (range: TimeRange) => void,
+	fleet: boolean,
+	hubPresent: boolean,
+	visibility: NavVisibility,
+): void {
 	useEffect(() => {
 		let pendingG = 0;
 		const onKey = (e: KeyboardEvent) => {
@@ -155,10 +218,10 @@ function useShortcuts(onSection: (section: DashboardSection) => void, onRange: (
 			const key = e.key.toLowerCase();
 			if (pendingG && Date.now() - pendingG < 1200) {
 				pendingG = 0;
-				const item = NAV.flatMap(group => group.items).find(i => i.hotkey === key);
-				if (item) {
+				const next = shortcutSection(key, fleet, hubPresent, visibility);
+				if (next) {
 					e.preventDefault();
-					onSection(item.id);
+					onSection(next);
 					window.scrollTo({ top: 0 });
 				}
 				return;
@@ -175,12 +238,12 @@ function useShortcuts(onSection: (section: DashboardSection) => void, onRange: (
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [onSection, onRange]);
+	}, [onSection, onRange, fleet, hubPresent, visibility]);
 }
 
 /** Which hub commit and UI build is live: how a deploy is confirmed. */
 function HubVersionLine() {
-	const version = useQuery(["hub-version"], ({ signal }) => getHubVersion(signal), { enabled: true });
+	const version = useQuery(["hub-version"], ({ signal }) => getHubVersion(signal), { enabled: true, scope: "local" });
 	const v = version.data;
 	if (!v) return null;
 	const commit = v.hub.commit ? `${v.hub.commit.slice(0, 8)}${v.hub.dirty ? "+" : ""}` : "unknown";

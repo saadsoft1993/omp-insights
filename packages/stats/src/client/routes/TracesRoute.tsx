@@ -1,3 +1,7 @@
+import { ALL_MACHINES, concreteMachine, useSelectedMachine } from "../app/machine";
+import { MissingMachineNumbers } from "../app/MachineBanner";
+import { fleetQueryView, useFleetQuery } from "../data/fleet-query";
+import { mergeTraces } from "../data/fleet-merge";
 /**
  * Traces section: root-session list (subagents folded in) that opens the
  * flamegraph trace viewer for a selected session.
@@ -5,13 +9,9 @@
 
 import { useMemo, useState } from "react";
 import { getSessions } from "../api";
-import {
-	formatCompact,
-	formatElapsed,
-	formatEstimatedCost,
-	formatInteger,
-	formatRelativeTime,
-} from "../data/formatters";
+import { formatInteger, formatRelativeTime } from "../data/formatters";
+import { sessionFolder, sessionRowKey } from "../data/session-rows";
+import { sessionColumns } from "./session-columns";
 import { useQuery } from "../data/query";
 import { TraceView } from "../traces/TraceView";
 import type { SessionSummary } from "../types";
@@ -20,7 +20,6 @@ import {
 	type Column,
 	EmptyState,
 	LabelCell,
-	MeterCell,
 	PageHeader,
 	QueryView,
 	SearchInput,
@@ -32,28 +31,27 @@ import "../traces/traces.css";
 export interface TracesRouteProps {
 	active: boolean;
 	session: string | null;
-	onOpenSession: (file: string | null) => void;
+	sessionMachine?: string | null;
+	onOpenSession: (file: string | null, machine?: string) => void;
 }
 
 const SESSION_LIMIT = 200;
 
-function ModelList({ models }: { models: string[] }) {
-	if (models.length === 0) return <span className="dim">-</span>;
-	return (
-		<span className="traces-models" title={models.join("\n")}>
-			<span className="mono truncate">{models[0]}</span>
-			{models.length > 1 && <span className="badge">+{models.length - 1}</span>}
-		</span>
-	);
-}
-
-export function TracesRoute({ active, session, onOpenSession }: TracesRouteProps) {
+export function TracesRoute({ active, session, sessionMachine, onOpenSession }: TracesRouteProps) {
 	const [filter, setFilter] = useState("");
-	const sessions = useQuery(
+	const all = useSelectedMachine() === ALL_MACHINES;
+	const single = useQuery(
 		["sessions", SESSION_LIMIT],
-		({ signal }) => getSessions(SESSION_LIMIT, undefined, signal),
-		{ pollMs: 30000, enabled: active && session === null },
+		({ signal }) => getSessions(SESSION_LIMIT, undefined, signal, concreteMachine()),
+		{ enabled: active && session === null && !all, pollMs: 30000 },
 	);
+	const fleet = useFleetQuery(
+		["sessions", SESSION_LIMIT],
+		async (machine, signal) => ({ machine, data: await getSessions(SESSION_LIMIT, undefined, signal, machine) }),
+		answers => mergeTraces(answers, SESSION_LIMIT),
+		{ enabled: active && session === null && all },
+	);
+	const sessions = all ? fleetQueryView(single, fleet) : single;
 
 	const filtered = useMemo(() => {
 		const rows = sessions.data ?? [];
@@ -69,8 +67,9 @@ export function TracesRoute({ active, session, onOpenSession }: TracesRouteProps
 
 	const maxCost = useMemo(() => Math.max(0, ...filtered.map(row => row.costTotal)), [filtered]);
 
-	const columns = useMemo<Column<SessionSummary>[]>(
-		() => [
+	const columns = useMemo<Column<SessionSummary>[]>(() => {
+		const shared = sessionColumns(maxCost);
+		return [
 			{
 				key: "title",
 				header: "Session",
@@ -78,12 +77,18 @@ export function TracesRoute({ active, session, onOpenSession }: TracesRouteProps
 				render: row => (
 					<LabelCell
 						primary={row.title ?? row.file.split("/").pop()}
-						secondary={<span className="mono">{row.folder.split("/").slice(-2).join("/")}</span>}
+						secondary={
+							<span className="mono">
+								{[(row as SessionSummary & { machine?: string }).machine, sessionFolder(row.folder, "short")]
+									.filter(Boolean)
+									.join(" · ")}
+							</span>
+						}
 					/>
 				),
 				sort: row => (row.title ?? row.file).toLowerCase(),
 			},
-			{ key: "models", header: "Models", render: row => <ModelList models={row.models} /> },
+			shared.models,
 			{
 				key: "started",
 				header: "Started",
@@ -95,75 +100,34 @@ export function TracesRoute({ active, session, onOpenSession }: TracesRouteProps
 				),
 				sort: row => row.startedAt,
 			},
-			{
-				key: "duration",
-				header: "Duration",
-				align: "right",
-				render: row => <span className="num">{formatElapsed(row.endedAt - row.startedAt)}</span>,
-				sort: row => row.endedAt - row.startedAt,
-			},
-			{
-				key: "requests",
-				header: "Requests",
-				align: "right",
-				render: row => <span className="num">{formatInteger(row.requests)}</span>,
-				sort: row => row.requests,
-			},
-			{
-				key: "toolCalls",
-				header: "Tools",
-				align: "right",
-				render: row => <span className="num">{formatInteger(row.toolCalls)}</span>,
-				sort: row => row.toolCalls,
-			},
-			{
-				key: "subagents",
-				header: "Agents",
-				align: "right",
-				render: row =>
-					row.subagents > 0 ? (
-						<span className="num">{formatInteger(row.subagents)}</span>
-					) : (
-						<span className="num dim">0</span>
-					),
-				sort: row => row.subagents,
-			},
-			{
-				key: "tokens",
-				header: "Tokens",
-				align: "right",
-				render: row => <span className="num">{formatCompact(row.totalTokens)}</span>,
-				sort: row => row.totalTokens,
-			},
-			{
-				key: "cost",
-				header: "Cost",
-				align: "right",
-				width: 150,
-				render: row => (
-					<MeterCell
-						value={row.costTotal}
-						max={maxCost}
-						display={formatEstimatedCost(row.costTotal, row.unpricedRequests)}
-					/>
-				),
-				sort: row => row.costTotal,
-			},
-		],
-		[maxCost],
-	);
+			shared.duration,
+			shared.requests,
+			shared.tools,
+			shared.agents,
+			shared.tokens,
+			shared.cost,
+		];
+	}, [maxCost]);
 
 	if (session !== null) {
-		return <TraceView file={session} active={active} onBack={() => onOpenSession(null)} />;
+		return (
+			<TraceView
+				file={session}
+				machine={sessionMachine ?? undefined}
+				active={active}
+				onBack={() => onOpenSession(null)}
+			/>
+		);
 	}
 
 	const total = sessions.data?.length ?? 0;
 	return (
-		<div className="stack traces-page">
+		<div className="stack">
 			<PageHeader
 				title="Traces"
 				description="Recent sessions with subagent activity folded in. Open one to inspect its timeline."
 			/>
+			{all && <MissingMachineNumbers machines={fleet.machines} />}
 			<Card
 				title="Sessions"
 				description={
@@ -195,8 +159,8 @@ export function TracesRoute({ active, session, onOpenSession }: TracesRouteProps
 						<Table
 							columns={columns}
 							rows={filtered}
-							rowKey={row => row.file}
-							onRowClick={row => onOpenSession(row.file)}
+							rowKey={sessionRowKey}
+							onRowClick={row => onOpenSession(row.file, (row as SessionSummary & { machine?: string }).machine)}
 							initialSort={{ key: "started", dir: "desc" }}
 							limit={50}
 							empty={<EmptyState title="No matching sessions" hint="Try a different filter." />}

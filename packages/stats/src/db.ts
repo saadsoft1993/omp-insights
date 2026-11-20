@@ -138,6 +138,7 @@ const CREDENTIAL_ID_BACKFILL_KEY = "messages_credential_id_v1";
 // purpose apart. Rows ingested before the column existed are NULL until one
 // full re-parse writes it back.
 const USAGE_PURPOSE_BACKFILL_KEY = "messages_usage_purpose_v1";
+const STOP_REASON_PRESENCE_BACKFILL_KEY = "messages_stop_reason_presence_v1";
 // Per-transcript agent activity (last tool and intent, exit, turn state) for
 // the Live page's subagent rows; transcripts ingested before the table existed
 // get their row from one full re-parse.
@@ -227,6 +228,7 @@ export async function initDb(): Promise<Database> {
 			duration INTEGER,
 			ttft INTEGER,
 			stop_reason TEXT NOT NULL,
+			stop_reason_present INTEGER,
 			error_message TEXT,
 			input_tokens INTEGER NOT NULL,
 			output_tokens INTEGER NOT NULL,
@@ -515,6 +517,9 @@ export async function initDb(): Promise<Database> {
 	if (!messageColumns.some(column => column.name === "purpose")) {
 		db.run("ALTER TABLE messages ADD COLUMN purpose TEXT");
 	}
+	if (!messageColumns.some(column => column.name === "stop_reason_present")) {
+		db.run("ALTER TABLE messages ADD COLUMN stop_reason_present INTEGER");
+	}
 	// Token-usage-by-agent: each message is classified main / subagent / advisor
 	// from its transcript path. A brand-new table gets the column from CREATE
 	// TABLE and the parser labels rows at insert time; a pre-existing table gets
@@ -604,6 +609,7 @@ export async function initDb(): Promise<Database> {
 	backfillUnpricedCosts(db);
 	backfillCredentialIds(db);
 	backfillUsagePurposes(db);
+	backfillStopReasonPresence(db);
 	backfillTranscriptActivity(db);
 	repairUserMessageLinks(db);
 	backfillPriorityPremiumRequests(db);
@@ -1279,6 +1285,7 @@ export function insertMessageStats(stats: Iterable<MessageStatsInput>): number {
 			"duration",
 			"ttft",
 			"stop_reason",
+			"stop_reason_present",
 			"error_message",
 			"input_tokens",
 			"output_tokens",
@@ -1314,7 +1321,8 @@ export function insertMessageStats(stats: Iterable<MessageStatsInput>): number {
 			cost_unpriced = excluded.cost_unpriced,
 			service_tier = excluded.service_tier,
 			credential_id = excluded.credential_id,
-			usage_purpose = excluded.usage_purpose`,
+			usage_purpose = excluded.usage_purpose,
+			stop_reason_present = excluded.stop_reason_present`,
 	});
 	return atomically(db, () => {
 		for (const s of stats) {
@@ -1334,6 +1342,7 @@ export function insertMessageStats(stats: Iterable<MessageStatsInput>): number {
 					s.duration,
 					s.ttft,
 					s.stopReason,
+					s.stopReasonPresent === false ? 0 : 1,
 					s.errorMessage,
 					s.usage.input,
 					s.usage.output,
@@ -1772,6 +1781,18 @@ function backfillUsagePurposes(database: Database): void {
 		.run(USAGE_PURPOSE_BACKFILL_KEY, BACKFILL_PENDING);
 }
 
+/** Re-parse old transcripts to distinguish absent stop reasons from aborted turns. */
+function backfillStopReasonPresence(database: Database): void {
+	const row = database.query("SELECT value FROM meta WHERE key = ?").get(STOP_REASON_PRESENCE_BACKFILL_KEY) as
+		| { value: string }
+		| undefined;
+	if (!shouldResetBackfill(row?.value)) return;
+	database.run("DELETE FROM file_offsets");
+	database
+		.query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")
+		.run(STOP_REASON_PRESENCE_BACKFILL_KEY, BACKFILL_PENDING);
+}
+
 /**
  * One-shot `file_offsets` wipe so the next sync re-parses every session and
  * fills `transcript_activity` for transcripts ingested before the table
@@ -1918,6 +1939,7 @@ export function markSessionBackfillsComplete(): void {
 			COST_UNPRICED_BACKFILL_KEY,
 			CREDENTIAL_ID_BACKFILL_KEY,
 			USAGE_PURPOSE_BACKFILL_KEY,
+			STOP_REASON_PRESENCE_BACKFILL_KEY,
 			TRANSCRIPT_ACTIVITY_BACKFILL_KEY,
 		]) {
 			markComplete.run(key, BACKFILL_COMPLETE);

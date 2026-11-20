@@ -1,0 +1,313 @@
+{
+  "both": {
+    "stats": [
+      {
+        "label": "This month so far",
+        "value": "$198"
+      },
+      {
+        "label": "Credits this month",
+        "value": "−$60"
+      },
+      {
+        "label": "Billed so far",
+        "value": "$120"
+      },
+      {
+        "label": "Credit left",
+        "value": "$150"
+      },
+      {
+        "label": "Forecast month-end",
+        "value": "$360"
+      },
+      {
+        "label": "Last month",
+        "value": "$495"
+      },
+      {
+        "label": "Run-rate / month",
+        "value": "$693"
+      },
+      {
+        "label": "On dead + idle / mo",
+        "value": "$24"
+      }
+    ],
+    "services": [
+      {
+        "name": "S3",
+        "account": "Beta",
+        "rr": "$300"
+      },
+      {
+        "name": "S3",
+        "account": "Alpha",
+        "rr": "$150"
+      },
+      {
+        "name": "Lambda",
+        "account": "Beta",
+        "rr": "$120"
+      },
+      {
+        "name": "Lambda",
+        "account": "Alpha",
+        "rr": "$60.00"
+      },
+      {
+        "name": "Tax",
+        "account": "Beta",
+        "rr": "$42.00"
+      },
+      {
+        "name": "Tax",
+        "account": "Alpha",
+        "rr": "$21.00"
+      }
+    ],
+    "totals": [
+      "Total",
+      "$0.00",
+      "$0.00",
+      "$495",
+      "$495",
+      "$495",
+      "$495",
+      "$495",
+      "$495",
+      "$495",
+      "$495",
+      "$495",
+      "$495",
+      "$198",
+      "$5,148"
+    ],
+    "callouts": [
+      {
+        "title": "Stale data — Alpha",
+        "text": "refresh failed. Figures for this account are from 2026-11-20."
+      },
+      {
+        "title": "Unrecognised charge types — Alpha",
+        "text": "SyntheticCharge are being counted as usage. If they are discounts or credits, the service figures are netted; add them to collect.py."
+      },
+      {
+        "title": "Credits running low",
+        "text": "$150 of credit left covers about 0 months at the current run-rate. After that, usage is billed."
+      },
+      {
+        "title": "Credits no longer covering Alpha",
+        "text": "Credits covered last month in full, but $40.00 has been billed this month."
+      },
+      {
+        "title": "Credits no longer covering Beta",
+        "text": "Credits covered last month in full, but $80.00 has been billed this month."
+      },
+      {
+        "title": "Biggest cost",
+        "text": "S3 on Beta — $300/mo, 43% of the run-rate. Open it in section 06 to see what inside it charges."
+      },
+      {
+        "title": "Growing",
+        "text": "S3 (Beta) $200 → $300 · S3 (Alpha) $100 → $150 · Tax (Beta) $30 → $42"
+      },
+      {
+        "title": "Dead or underused",
+        "text": "2 dead or idle resources; removing them would save about $24/mo (Reserved Instance fees are paid either way and are not counted). See section 08."
+      }
+    ]
+  },
+  "alpha": {
+    "stats": [
+      {
+        "label": "This month so far",
+        "value": "$66"
+      },
+      {
+        "label": "Credits this month",
+        "value": "−$20"
+      },
+      {
+        "label": "Billed so far",
+        "value": "$40"
+      },
+      {
+        "label": "Credit left",
+        "value": "$50"
+      },
+      {
+        "label": "Forecast month-end",
+        "value": "$120"
+      },
+      {
+        "label": "Last month",
+        "value": "$165"
+      },
+      {
+        "label": "Run-rate / month",
+        "value": "$231"
+      },
+      {
+        "label": "On dead + idle / mo",
+        "value": "$8"
+      }
+    ],
+    "services": [
+      {
+        "name": "S3",
+        "account": "Alpha",
+        "rr": "$150"
+      },
+      {
+        "name": "Lambda",
+        "account": "Alpha",
+        "rr": "$60.00"
+      },
+      {
+        "name": "Tax",
+        "account": "Alpha",
+        "rr": "$21.00"
+      }
+    ],
+    "totals": [
+      "Total",
+      "$0.00",
+      "$0.00",
+      "$165",
+      "$165",
+      "$165",
+      "$165",
+      "$165",
+      "$165",
+      "$165",
+      "$165",
+      "$165",
+      "$165",
+      "$66.00",
+      "$1,716"
+    ],
+    "callouts": [
+      {
+        "title": "Stale data — Alpha",
+        "text": "refresh failed. Figures for this account are from 2026-11-20."
+      },
+      {
+        "title": "Unrecognised charge types — Alpha",
+        "text": "SyntheticCharge are being counted as usage. If they are discounts or credits, the service figures are netted; add them to collect.py."
+      },
+      {
+        "title": "Credits running low",
+        "text": "$50 of credit left covers about 0 months at the current run-rate. After that, usage is billed."
+      },
+      {
+        "title": "Credits no longer covering Alpha",
+        "text": "Credits covered last month in full, but $40.00 has been billed this month."
+      },
+      {
+        "title": "Biggest cost",
+        "text": "S3 — $150/mo, 65% of the run-rate. Open it in section 06 to see what inside it charges."
+      },
+      {
+        "title": "Growing",
+        "text": "S3 $100 → $150 · Tax $15 → $21"
+      },
+      {
+        "title": "Dead or underused",
+        "text": "1 dead or idle resources; removing them would save about $8/mo (Reserved Instance fees are paid either way and are not counted). See section 08."
+      }
+    ]
+  },
+  "beta": {
+    "stats": [
+      {
+        "label": "This month so far",
+        "value": "$132"
+      },
+      {
+        "label": "Credits this month",
+        "value": "−$40"
+      },
+      {
+        "label": "Billed so far",
+        "value": "$80"
+      },
+      {
+        "label": "Credit left",
+        "value": "$100"
+      },
+      {
+        "label": "Forecast month-end",
+        "value": "$240"
+      },
+      {
+        "label": "Last month",
+        "value": "$330"
+      },
+      {
+        "label": "Run-rate / month",
+        "value": "$462"
+      },
+      {
+        "label": "On dead + idle / mo",
+        "value": "$16"
+      }
+    ],
+    "services": [
+      {
+        "name": "S3",
+        "account": "Beta",
+        "rr": "$300"
+      },
+      {
+        "name": "Lambda",
+        "account": "Beta",
+        "rr": "$120"
+      },
+      {
+        "name": "Tax",
+        "account": "Beta",
+        "rr": "$42.00"
+      }
+    ],
+    "totals": [
+      "Total",
+      "$0.00",
+      "$0.00",
+      "$330",
+      "$330",
+      "$330",
+      "$330",
+      "$330",
+      "$330",
+      "$330",
+      "$330",
+      "$330",
+      "$330",
+      "$132",
+      "$3,432"
+    ],
+    "callouts": [
+      {
+        "title": "Credits running low",
+        "text": "$100 of credit left covers about 0 months at the current run-rate. After that, usage is billed."
+      },
+      {
+        "title": "Credits no longer covering Beta",
+        "text": "Credits covered last month in full, but $80.00 has been billed this month."
+      },
+      {
+        "title": "Biggest cost",
+        "text": "S3 — $300/mo, 65% of the run-rate. Open it in section 06 to see what inside it charges."
+      },
+      {
+        "title": "Growing",
+        "text": "S3 $200 → $300 · Tax $30 → $42"
+      },
+      {
+        "title": "Dead or underused",
+        "text": "1 dead or idle resources; removing them would save about $16/mo (Reserved Instance fees are paid either way and are not counted). See section 08."
+      }
+    ]
+  }
+}

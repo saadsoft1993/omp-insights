@@ -1,0 +1,471 @@
+/* Operations pages: Jobs, Devices, Alerts, Relay. Tables are the standard table; these are their cells and the bits around them. */
+
+.ops-page {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.ops-page > * {
+	min-width: 0;
+}
+
+.ops-dim {
+	color: var(--ink-3);
+}
+
+.ops-bad {
+	color: var(--bad);
+}
+
+.ops-warn {
+	color: var(--warn);
+}
+
+.ops-mono {
+	font-family: var(--font-mono);
+	font-size: 12px;
+}
+
+/* Primary text with a muted sub-line (and an optional status dot in front). */
+.ops-pc {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+}
+
+.ops-pc-text {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 1px;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.ops-pc-title {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--ink-1);
+}
+
+.ops-pc-sub {
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12px;
+	color: var(--ink-3);
+}
+
+.ops-pc-text > .badge {
+	align-self: flex-start;
+}
+
+.ops-state-dot {
+	flex: none;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--ink-4);
+}
+
+.ops-state-dot[data-tone="bad"] {
+	background: var(--bad);
+}
+
+.ops-state-dot[data-tone="ok"] {
+	background: var(--ok);
+}
+
+.ops-state-dot[data-tone="accent"] {
+	background: var(--accent);
+}
+
+.ops-state-dot[data-tone="warn"] {
+	background: var(--warn);
+}
+
+.ops-this {
+	height: 18px;
+	font-size: 11px;
+	font-weight: 500;
+}
+
+.ops-actions {
+	display: inline-flex;
+	flex-wrap: nowrap;
+	justify-content: flex-end;
+	gap: 6px;
+}
+
+.ops-target {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+/* Page toolbar: search and the state filter. */
+.ops-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.ops-toolbar .search {
+	flex: 0 1 340px;
+	min-width: 0;
+}
+
+.ops-toolbar .search .input {
+	width: 100%;
+}
+
+.ops-toolbar .segmented {
+	max-width: 100%;
+	overflow-x: auto;
+}
+
+.ops-count {
+	margin-left: 6px;
+	font-family: var(--font-mono);
+	font-size: 11px;
+	color: var(--ink-3);
+}
+
+/* Group heading row under All machines. */
+.ops-page .table--std .std-group th {
+	background: var(--hover);
+	color: var(--ink-2);
+}
+
+.ops-page .table--std .std-group th > span:first-child {
+	display: inline-flex;
+	vertical-align: middle;
+	min-width: 0;
+}
+
+.ops-page .table--std .std-group th > .btn {
+	float: right;
+}
+
+/* The machine and count stay on one line; a hint follows on that line when it fits, and below it when not. */
+.ops-group {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 8px;
+	min-width: 0;
+	max-width: 100%;
+	font-size: 12px;
+	font-weight: 500;
+}
+
+.ops-group-head {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	max-width: 100%;
+	min-width: 0;
+	white-space: nowrap;
+}
+
+.ops-group b {
+	color: var(--ink-1);
+	font-weight: 600;
+}
+
+/* A held or unreachable machine in a single-machine view (inside the table's summary slot). */
+.ops-availability {
+	display: inline-flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 0;
+	color: #b77d1c;
+}
+
+.ops-availability .std-machine-name {
+	color: var(--ink-1);
+	font-weight: 600;
+}
+
+.ops-group-hint {
+	display: inline-flex;
+	align-items: center;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.ops-group-hint > :not(.ops-retry) {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* A failure note with Try again: only the words shorten; the button keeps its size and stays in view. */
+.ops-retry {
+	display: inline-flex;
+	align-items: center;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.ops-retry-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ops-retry > [aria-hidden="true"],
+.ops-retry > .btn {
+	flex: none;
+}
+
+/* Phones: the hint takes its own line under the machine name. */
+@container (max-width: 600px) {
+	.ops-group-hint {
+		flex: 1 1 100%;
+	}
+
+	.ops-group-hint > :not(.ops-retry) {
+		white-space: normal;
+	}
+}
+
+/* Capability and machine notes. */
+.ops-update {
+	color: var(--warn);
+	font-weight: 400;
+}
+
+.ops-hint {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+	font-size: 12.5px;
+	color: var(--ink-3);
+}
+
+.ops-hint code,
+.ops-notes code,
+.ops-confirm code,
+.ops-pc-sub code {
+	font-family: var(--font-mono);
+	font-size: 0.92em;
+	overflow-wrap: anywhere;
+}
+
+.ops-notes {
+	display: grid;
+	gap: 4px;
+	margin: -4px 0 0;
+	padding: 0 0 0 18px;
+	font-size: 12.5px;
+	color: var(--warn);
+}
+
+.ops-problems {
+	display: grid;
+	gap: 6px;
+}
+
+.ops-problem {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+	border-radius: 8px;
+	background: var(--warn-soft);
+	color: var(--ink-1);
+	font-size: 12.5px;
+}
+
+.ops-problem > svg {
+	flex: none;
+	color: var(--warn);
+}
+
+.ops-problem > span {
+	flex: 1;
+	min-width: 0;
+}
+
+/* Devices: one status strip, a cell per machine. */
+.ops-strip {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	border: 1px solid transparent;
+	border-radius: 12px;
+	background:
+		linear-gradient(var(--card), var(--card)) padding-box,
+		linear-gradient(180deg, var(--line-3), var(--line-1) 40%) border-box;
+	overflow: hidden;
+}
+
+.ops-strip > div {
+	padding: 10px 16px;
+	border-left: 1px solid var(--line-1);
+	font-size: 13px;
+}
+
+.ops-strip > div:first-child {
+	border-left: 0;
+}
+
+.ops-strip small {
+	display: block;
+	font-size: 12px;
+	color: var(--ink-3);
+}
+
+.ops-strip b {
+	font-weight: 600;
+}
+
+/* Dialogs. */
+.ops-confirm {
+	display: grid;
+	gap: 12px;
+	font-size: 13px;
+	color: var(--ink-2);
+}
+
+/* Unpairing a browser that auto-pair will let straight back in: what happens, then how to keep it out. */
+.ops-auto-pair {
+	display: grid;
+	gap: 6px;
+	padding: 10px 12px;
+	border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+	border-radius: 8px;
+	background: var(--warn-soft);
+}
+
+.ops-auto-pair p {
+	margin: 0;
+}
+
+.ops-field {
+	display: grid;
+	gap: 6px;
+}
+
+.ops-field .input {
+	width: 100%;
+	font-family: var(--font-mono);
+}
+
+.ops-field-hint {
+	font-size: 12px;
+	color: var(--warn);
+}
+
+.ops-check {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	color: var(--ink-1);
+}
+
+.ops-check input {
+	margin-top: 2px;
+}
+
+.ops-confirm .pair-qr {
+	width: min(220px, 100%);
+	justify-self: center;
+}
+
+/* Logs drawer: the log boxes share the drawer's height; each scrolls on its own, both ways. */
+.ops-logs {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.ops-logs > p {
+	flex: none;
+	margin: 0;
+}
+
+.ops-logs section {
+	flex: 1 1 0;
+	min-height: 140px;
+	display: flex;
+	flex-direction: column;
+}
+
+.ops-logs section[data-empty="true"] {
+	flex: none;
+	min-height: 0;
+}
+
+.ops-logs h3 {
+	flex: none;
+	margin: 0 0 6px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--ink-3);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.ops-logs pre {
+	flex: 1 1 auto;
+	min-height: 0;
+	margin: 0;
+	overflow: auto;
+	padding: 10px 12px;
+	border: 1px solid var(--line-1);
+	border-radius: 8px;
+	background: var(--bg);
+	font-family: var(--font-mono);
+	font-size: 12px;
+	line-height: 1.5;
+	white-space: pre;
+	overflow-wrap: normal;
+	tab-size: 4;
+}
+
+@media (max-width: 600px) {
+	.ops-toolbar .search {
+		flex: 1 1 100%;
+	}
+
+	.ops-page .table--std .std-head {
+		flex-wrap: wrap;
+	}
+
+	.ops-page .table--std .std-tools {
+		flex-wrap: wrap;
+	}
+}
+
+/* Labels for bare numbers once the header row is gone (phone rows), as the prototype's meta line. */
+.ops-phone-label {
+	display: none;
+	color: var(--ink-3);
+	font-family: var(--font-sans, inherit);
+}
+
+@container (max-width: 600px) {
+	.ops-phone-label {
+		display: inline;
+	}
+}

@@ -1,0 +1,436 @@
+.table--std {
+	container-type: inline-size;
+	overflow: visible;
+	border: 1px solid transparent;
+	border-radius: 12px;
+	background:
+		linear-gradient(var(--card), var(--card)) padding-box,
+		linear-gradient(180deg, var(--line-3), var(--line-1) 40%) border-box;
+	box-shadow: var(--shadow-1);
+	min-width: 0;
+}
+.table--std .std-head {
+	min-height: 60px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 12px 16px;
+}
+.table--std .std-head strong {
+	font-size: 14px;
+	font-weight: 600;
+}
+.table--std .std-subtitle {
+	color: var(--ink-3);
+	font-size: 12px;
+}
+.table--std .std-tools {
+	display: flex;
+	gap: 8px;
+}
+.table--std .std-summary {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px 12px;
+	padding: 10px 16px;
+	border-top: 1px solid var(--line-1);
+	font-size: 12.5px;
+}
+.table--std table {
+	width: 100%;
+	table-layout: fixed;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+.table--std th {
+	position: sticky;
+	top: var(--topbar-h);
+	z-index: 1;
+	height: 34px;
+	text-align: left;
+	color: var(--ink-3);
+	background: var(--card);
+	font-size: 12px;
+	font-weight: 500;
+}
+.table--std th,
+.table--std td {
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--line-1);
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.table--std th:first-child,
+.table--std td:first-child {
+	padding-left: 16px;
+}
+.table--std th:last-child,
+.table--std td:last-child {
+	padding-right: 16px;
+}
+.table--std th.std-control,
+.table--std td.std-control {
+	box-sizing: border-box;
+	width: 36px;
+	min-width: 36px;
+	padding: 4px;
+	text-align: center;
+}
+.table--std th button {
+	color: inherit;
+	font: inherit;
+	border: 0;
+	background: transparent;
+	cursor: pointer;
+	padding: 0;
+}
+.table--std td {
+	height: 52px;
+}
+.table--std[data-dense="true"] td {
+	height: 44px;
+}
+.table--std tr[data-selected="true"] {
+	background: var(--selected);
+}
+.table--std tbody tr:hover {
+	background: var(--hover);
+}
+.table--std tr[data-pinned="true"] {
+	box-shadow: inset 3px 0 #d99b31;
+}
+.table--std tr[data-stale="true"] {
+	opacity: 0.55;
+}
+.table--std [data-align="right"] {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+.table--std [data-align="center"] {
+	text-align: center;
+}
+.table--std tr:focus-visible,
+.table--std :focus-visible {
+	outline: 2px solid #28bfd0;
+	outline-offset: -2px;
+}
+.table--std .std-group th {
+	position: static;
+	height: 40px;
+}
+.table--std .std-detail td {
+	height: auto;
+	white-space: normal;
+}
+.table--std .std-paging,
+.table--std .std-bulk,
+.table--std .std-state {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 16px;
+	gap: 12px;
+}
+.table--std .std-mobile-sort {
+	display: none;
+	align-items: center;
+	gap: 8px;
+	color: var(--ink-3);
+	font-size: 12px;
+}
+.table--std .std-mobile-sort select {
+	height: 32px;
+	padding: 0 28px 0 10px;
+	border: 1px solid var(--line-2);
+	border-radius: 8px;
+	color: var(--ink-1);
+	background-color: var(--card);
+	font: inherit;
+	font-size: 13px;
+	appearance: none;
+	background-image:
+		linear-gradient(45deg, transparent 50%, var(--ink-3) 50%),
+		linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
+	background-position:
+		calc(100% - 14px) 50%,
+		calc(100% - 10px) 50%;
+	background-size: 4px 4px;
+	background-repeat: no-repeat;
+}
+@container (max-width: 1080px) {
+	.table--std [data-priority="3"] {
+		display: none;
+	}
+}
+@container (max-width: 860px) {
+	.table--std [data-priority="2"] {
+		display: none;
+	}
+}
+@container (max-width: 600px) {
+	.table--std .std-head {
+		flex-wrap: wrap;
+	}
+	.table--std .std-head > div:first-child {
+		flex: 1 1 100%;
+		min-width: 0;
+	}
+	.table--std .std-tools {
+		flex: 1 1 100%;
+		flex-wrap: wrap;
+		min-width: 0;
+	}
+	.table--std .std-tools > * {
+		min-width: 0;
+		max-width: 100%;
+	}
+	.table--std .std-mobile-sort {
+		flex: 1 1 100%;
+	}
+	.table--std .std-mobile-sort select {
+		flex: 1;
+		min-width: 0;
+	}
+	.table--std table,
+	.table--std tbody {
+		display: block;
+		width: 100%;
+	}
+	.table--std tbody tr {
+		box-sizing: border-box;
+		display: flex;
+		width: 100%;
+	}
+	.table--std tbody .std-group th,
+	.table--std tbody .std-detail td {
+		box-sizing: border-box;
+		flex: 1 1 100%;
+		min-width: 0;
+		width: 100%;
+	}
+	.table--std tbody .std-group th {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 8px;
+		height: auto;
+		min-height: 40px;
+	}
+	.table--std tbody .std-group th > span:first-child {
+		flex: 1 1 12rem;
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.table--std tbody .std-group th > :not(span:first-child) {
+		max-width: 100%;
+	}
+	.table--std thead {
+		display: none;
+	}
+	.table--std .std-mobile-sort {
+		display: inline-flex;
+	}
+	.table--std tbody tr:not(.std-group):not(.std-detail) {
+		display: flex;
+		flex-wrap: wrap;
+		padding: 8px 16px;
+		border-bottom: 1px solid var(--line-1);
+	}
+	.table--std tbody td {
+		height: auto;
+		min-width: 0;
+		flex: 1 1 45%;
+		border: 0;
+		padding: 3px 0;
+	}
+	.table--std tbody td:first-child,
+	.table--std tbody td:last-child {
+		padding: 3px 0;
+	}
+}
+.table--std .std-skeleton {
+	padding: 8px 16px;
+}
+.table--std .std-skeleton div {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	height: 52px;
+}
+.table--std .std-skeleton span {
+	flex: 1;
+	height: 12px;
+	border-radius: 5px;
+	background: var(--hover);
+}
+.table--std .std-machine,
+.table--std .std-model,
+.table--std .std-tags {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.table--std .std-machine-swatch {
+	width: 8px;
+	height: 8px;
+	border-radius: 2px;
+	flex: none;
+}
+.table--std .std-machine {
+	max-width: 100%;
+	min-width: 0;
+}
+.table--std .std-machine-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.table--std .std-unreachable {
+	flex: none;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: #d99b31;
+}
+/* Last known (hub grace period): a hollow ring, distinct from the solid unreachable dot. */
+.table--std .std-unreachable[data-state="last-known"] {
+	box-sizing: border-box;
+	background: transparent;
+	border: 1.5px solid #d99b31;
+}
+.table--std .std-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	border-radius: 10px;
+	padding: 2px 7px;
+	background: var(--hover);
+	font-size: 11px;
+}
+.table--std .std-status-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: currentColor;
+}
+.table--std .std-status[data-tone="ok"] {
+	color: #39a878;
+}
+.table--std .std-status[data-tone="warn"] {
+	color: #c1831b;
+}
+.table--std .std-status[data-tone="error"] {
+	color: #d45c61;
+}
+.table--std .std-status-dot[data-live="true"] {
+	animation: std-pulse 1.5s ease-in-out infinite;
+}
+@keyframes std-pulse {
+	50% {
+		opacity: 0.35;
+	}
+}
+.table--std .std-tag,
+.table--std .std-model small {
+	border-radius: 4px;
+	padding: 2px 5px;
+	background: var(--hover);
+	font-size: 11px;
+}
+.table--std .std-model small {
+	font-family: monospace;
+}
+.table--std .std-tag-more-narrow {
+	display: none;
+}
+@container (max-width: 600px) {
+	.table--std .std-tag[data-index="1"],
+	.table--std .std-tag-more {
+		display: none;
+	}
+	.table--std .std-tag-more-narrow {
+		display: inline;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.table--std .std-status-dot {
+		animation: none !important;
+	}
+}
+.table--std td[data-kind="number"],
+.table--std td[data-kind="money"],
+.table--std td[data-kind="percent"],
+.table--std td[data-kind="duration"],
+.table--std td[data-kind="bar"] {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+}
+.table--std .meter-cell {
+	justify-content: flex-end;
+}
+.table--std td[data-wrap="true"] {
+	white-space: normal;
+}
+.table--std .std-group th {
+	text-align: left;
+}
+
+@container (max-width: 600px) {
+	.table--std tbody td.std-control {
+		flex: 0 0 36px;
+		width: 36px;
+		padding: 3px 4px;
+	}
+}
+
+/* Phone skeletons match the real rows: two-line cards, not a column grid. */
+@container (max-width: 600px) {
+	.table--std .std-skeleton {
+		padding: 0;
+	}
+	.table--std .std-skeleton .std-skeleton-row {
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: center;
+		gap: 8px;
+		height: auto;
+		min-height: 64px;
+		padding: 10px 16px;
+		border-bottom: 1px solid var(--line-1);
+	}
+	.table--std .std-skeleton .std-skeleton-row span {
+		display: block;
+		flex: none;
+		width: 62%;
+	}
+	.table--std .std-skeleton .std-skeleton-row span:nth-child(2) {
+		width: 40%;
+		height: 10px;
+	}
+	.table--std .std-skeleton .std-skeleton-row span:nth-child(n + 3) {
+		display: none;
+	}
+}
+
+.table--std .std-group-empty td {
+	height: 44px;
+	color: var(--ink-3);
+	font-size: 12.5px;
+}
+.table--std tbody .std-group-empty:hover {
+	background: transparent;
+}
+/* Empty state: the action sits centred under the message. */
+.table--std .std-state:not([role="alert"]) {
+	flex-direction: column;
+	justify-content: center;
+	text-align: center;
+}
+@container (max-width: 600px) {
+	.table--std tbody .std-group-empty td {
+		flex: 1 1 100%;
+	}
+}

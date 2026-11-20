@@ -3,6 +3,8 @@ import { initDb, insertMessageStats, insertToolCalls } from "@oh-my-pi/omp-stats
 import {
 	getDailyActivityFromRollup,
 	getOverallStats,
+	getModelPerformanceSeries,
+	getStatsByProvider,
 	getRollupStatus,
 	getSessionRollups,
 	getStatsByFolder,
@@ -101,6 +103,19 @@ describe("rollups", () => {
 		expect(raw.overall.failedRequests).toBe(1);
 		// "c" has no timing, so averages cover only the timed requests.
 		expect(raw.overall.avgDuration).toBe(2000);
+		expect(raw.overall).toMatchObject({ durationN: 2, ttftN: 2, tpsN: 2 });
+		expect(raw.overall.noCacheInputCost).toBeGreaterThanOrEqual(0);
+		expect(raw.overall.cachedPromptCost).toBeGreaterThanOrEqual(0);
+		expect(raw.byModel.find(row => row.model === "model-y")).toMatchObject({ durationN: 1, ttftN: 1, tpsN: 1 });
+		expect(getModelPerformanceSeries({ cutoff, bucketMs: HOUR })[0]).toMatchObject({ ttftN: 1, tpsN: 1 });
+		expect(raw.series[0]).toMatchObject({
+			durationN: 1,
+			ttftN: 1,
+			tpsN: 1,
+			noCacheInputCost: 0,
+			cachedPromptCost: 0,
+		});
+		expect(getStatsByProvider(cutoff)[0]).toMatchObject({ tpsN: 2 });
 		expect(raw.overall.avgTokensPerSecond).toBe(20);
 		expect(raw.tools.map(t => t.tool)).toEqual(["read"]);
 		expect(rawAll.overall.totalRequests).toBe(4);

@@ -1,50 +1,31 @@
+import { ALL_MACHINES, concreteMachine, useSelectedMachine } from "../app/machine";
+import { MissingMachineNumbers } from "../app/MachineBanner";
+import { fleetQueryView, useFleetQuery } from "../data/fleet-query";
+import { mergeOverview } from "../data/fleet-merge";
 import { ArrowRight } from "lucide-react";
 import { useMemo, useState } from "react";
-import { getAccountDashboardStats, getAccountFlowStats, getOverviewStats, getRecentRequests } from "../api";
+import { getOverviewStats } from "../api";
 import { Legend, ShareBar, TimeChart } from "../charts";
-import { OTHER_COLOR } from "../data/colors";
 import {
 	formatCompact,
 	formatDurationMs,
 	formatErrorRate,
 	formatEstimatedCost,
 	formatInteger,
-	formatMessageCost,
 	formatPercent,
-	formatRelativeTime,
 	formatTokensPerSecond,
 } from "../data/formatters";
 import { useQuery } from "../data/query";
 import { bucketAxis, rangeMeta } from "../data/range";
 import { densify } from "../data/series";
-import {
-	buildDecisionModelShare,
-	buildUsageTokenShare,
-	sumConversationTokens,
-	type TokenShareSegment,
-	type TokenShareView,
-} from "../data/view-models";
-import type { AgentType, MessageStats, TimeRange } from "../types";
-import {
-	Badge,
-	Card,
-	ChartSkeleton,
-	Dot,
-	LabelCell,
-	PageHeader,
-	QueryView,
-	Segmented,
-	Stat,
-	StatGrid,
-	Table,
-	TableSkeleton,
-} from "../ui";
-import { AccountFlowChart, flowProviders, RoutingLine, useAccountPalette } from "./AccountRouting";
+import { buildAgentTokenShare, sumConversationTokens } from "../data/view-models";
+import type { AgentType, TimeRange } from "../types";
+import { Card, ChartSkeleton, PageHeader, QueryView, Segmented, Stat, StatGrid } from "../ui";
 
 export interface OverviewRouteProps {
 	active: boolean;
 	range: TimeRange;
-	onRequestClick: (id: number) => void;
+	onRequestClick: (id: number, machine?: string) => void;
 }
 
 type ActivityMetric = "requests" | "tokens" | "cost";
@@ -69,16 +50,20 @@ const TOKEN_MIX = [
 	{ key: "output", label: "Output", color: "var(--chart-secondary)" },
 ] as const;
 
-export function OverviewRoute({ active, range, onRequestClick }: OverviewRouteProps) {
-	const overview = useQuery(["overview", range], ({ signal }) => getOverviewStats(range, signal), { enabled: active });
-	const recent = useQuery(["recent-requests"], ({ signal }) => getRecentRequests(12, signal), { enabled: active });
-	const accounts = useQuery(["accounts", range], ({ signal }) => getAccountDashboardStats(range, signal), {
-		enabled: active,
-	});
-	const accountFlow = useQuery(["account-flow", range], ({ signal }) => getAccountFlowStats(range, signal), {
-		enabled: active,
-	});
-	const palette = useAccountPalette(accounts.data, accountFlow.data);
+export function OverviewRoute({ active, range }: OverviewRouteProps) {
+	const allMachines = useSelectedMachine() === ALL_MACHINES;
+	const singleOverview = useQuery(
+		["overview", range],
+		({ signal }) => getOverviewStats(range, signal, concreteMachine()),
+		{ enabled: active && !allMachines },
+	);
+	const fleetOverview = useFleetQuery(
+		["overview", range],
+		(machine, signal) => getOverviewStats(range, signal, machine),
+		mergeOverview,
+		{ enabled: active && allMachines },
+	);
+	const overview = allMachines ? fleetQueryView(singleOverview, fleetOverview) : singleOverview;
 	const [metric, setMetric] = useState<ActivityMetric>("requests");
 	const meta = rangeMeta(range);
 
@@ -98,15 +83,6 @@ export function OverviewRoute({ active, range, onRequestClick }: OverviewRoutePr
 		};
 	}, [overview.data, range]);
 
-	const attribution = useMemo(() => {
-		const data = overview.data;
-		if (!data) return null;
-		return {
-			usage: buildUsageTokenShare(data.byAgentType, data.bySideChannel),
-			decisions: buildDecisionModelShare(data.bySideChannel),
-		};
-	}, [overview.data]);
-
 	const chartSeries =
 		metric === "requests"
 			? [
@@ -119,6 +95,7 @@ export function OverviewRoute({ active, range, onRequestClick }: OverviewRoutePr
 
 	return (
 		<div className="page">
+			{allMachines && <MissingMachineNumbers machines={fleetOverview.machines} />}
 			<PageHeader title="Overview" description={`Everything omp did across your sessions in ${meta.windowLabel}.`} />
 
 			<QueryView query={overview} skeleton={<ChartSkeleton height={112} />}>
@@ -190,7 +167,7 @@ export function OverviewRoute({ active, range, onRequestClick }: OverviewRoutePr
 					actions={<Segmented size="sm" options={ACTIVITY_OPTIONS} value={metric} onChange={setMetric} />}
 					stale={overview.stale}
 				>
-					<QueryView query={overview} skeleton={<ChartSkeleton height={260} />}>
+					<QueryView hideError query={overview} skeleton={<ChartSkeleton height={260} />}>
 						{() => (
 							<TimeChart
 								buckets={series.buckets}
@@ -204,8 +181,8 @@ export function OverviewRoute({ active, range, onRequestClick }: OverviewRoutePr
 				</Card>
 
 				<Card index={2} title="Token mix" description="Where conversation tokens went" stale={overview.stale}>
-					<QueryView query={overview} skeleton={<ChartSkeleton height={260} />}>
-						{({ overall }) => {
+					<QueryView hideError query={overview} skeleton={<ChartSkeleton height={260} />}>
+						{({ overall, byAgentType }) => {
 							const mix = {
 								input: overall.totalInputTokens,
 								cacheRead: overall.totalCacheReadTokens,
@@ -213,6 +190,7 @@ export function OverviewRoute({ active, range, onRequestClick }: OverviewRoutePr
 								output: overall.totalOutputTokens,
 							};
 							const total = sumConversationTokens(overall);
+							const agents = buildAgentTokenShare(byAgentType);
 							return (
 								<div className="stack" style={{ gap: 18 }}>
 									<div className="stack" style={{ gap: 10 }}>
@@ -233,14 +211,34 @@ export function OverviewRoute({ active, range, onRequestClick }: OverviewRoutePr
 											}))}
 										/>
 									</div>
-									{attribution && (
-										<div className="stack" style={{ gap: 10 }}>
-											<div className="section-label" style={{ marginBottom: 0 }}>
-												By source
-											</div>
-											<ShareBreakdown view={attribution.usage} />
+									<div className="stack" style={{ gap: 10 }}>
+										<div className="section-label" style={{ marginBottom: 0 }}>
+											By agent
 										</div>
-									)}
+										<ShareBar
+											segments={agents.segments.map(s => ({
+												key: s.agentType,
+												label: AGENT_LABEL[s.agentType],
+												value: s.tokens,
+												color: AGENT_COLOR[s.agentType],
+											}))}
+										/>
+										{agents.segments.map(s => (
+											<div key={s.agentType} className="row" style={{ justifyContent: "space-between" }}>
+												<span className="row">
+													<span className="swatch" style={{ background: AGENT_COLOR[s.agentType] }} />
+													{AGENT_LABEL[s.agentType]}
+													<span className="dim num">{formatInteger(s.requests)} req</span>
+												</span>
+												<span className="row">
+													<span className="dim num">{formatCompact(s.tokens)}</span>
+													<span className="num" style={{ minWidth: 48, textAlign: "right" }}>
+														{formatPercent(s.share)}
+													</span>
+												</span>
+											</div>
+										))}
+									</div>
 								</div>
 							);
 						}}
@@ -248,176 +246,14 @@ export function OverviewRoute({ active, range, onRequestClick }: OverviewRoutePr
 				</Card>
 			</div>
 
-			{attribution && attribution.decisions.segments.length > 0 && (
-				<Card
-					index={3}
-					title="Decision models"
-					description="Where decision-model tokens went, by use case"
-					stale={overview.stale}
-				>
-					<ShareBreakdown view={attribution.decisions} wide />
-				</Card>
-			)}
-
-			<Card
-				index={3}
-				title="Accounts"
-				description="Measured split of the last 15 minutes, recent new sessions, and traffic per account"
-				actions={
-					<a className="btn" data-size="sm" data-variant="ghost" href={`#/accounts?range=${range}`}>
-						Accounts <ArrowRight size={13} />
-					</a>
-				}
-				stale={accounts.stale || accountFlow.stale}
-			>
-				<QueryView query={accounts} skeleton={<ChartSkeleton height={120} />}>
-					{({ routing }) => {
-						const flow = accountFlow.data;
-						const charted = flowProviders(flow);
-						if (routing.length === 0 && charted.length === 0) {
-							return <span className="dim">No traffic served by a stored account in this range.</span>;
-						}
-						return (
-							<div className="stack" style={{ gap: 14 }}>
-								{routing.map(r => (
-									<RoutingLine key={r.provider} routing={r} palette={palette} />
-								))}
-								{flow &&
-									charted.map(provider => (
-										<div key={provider} className="stack" style={{ gap: 6 }}>
-											<span className="section-label mono" style={{ marginBottom: 0 }}>
-												{provider}
-											</span>
-											<AccountFlowChart
-												flow={flow}
-												provider={provider}
-												range={range}
-												metric="requests"
-												palette={palette}
-												height={96}
-											/>
-										</div>
-									))}
-							</div>
-						);
-					}}
-				</QueryView>
-			</Card>
-
-			<Card
-				index={4}
-				title={
-					<>
-						<Dot tone="live" pulse /> Latest requests
-					</>
-				}
-				description="Most recent model calls across every session"
-				actions={
-					<a className="btn" data-size="sm" data-variant="ghost" href={`#/requests?range=${range}`}>
-						All requests <ArrowRight size={13} />
-					</a>
-				}
-				flush
-			>
-				<QueryView query={recent} skeleton={<TableSkeleton rows={8} />}>
-					{rows => (
-						<Table
-							rows={rows}
-							rowKey={row => row.id ?? `${row.sessionFile}:${row.entryId}`}
-							onRowClick={row => row.id !== undefined && onRequestClick(row.id)}
-							columns={REQUEST_COLUMNS}
-							dense
-						/>
-					)}
-				</QueryView>
-			</Card>
-		</div>
-	);
-}
-
-function segmentLabel(segment: TokenShareSegment): string {
-	if (segment.kind === "agent") return AGENT_LABEL[segment.agentType];
-	return segment.category.charAt(0).toUpperCase() + segment.category.slice(1);
-}
-
-function segmentColor(segment: TokenShareSegment, colors: ReadonlyMap<string, string>): string {
-	if (segment.kind === "agent") return AGENT_COLOR[segment.agentType];
-	return colors.get(segment.category) ?? OTHER_COLOR;
-}
-
-/**
- * A share bar over one row per segment: swatch, label, requests, tokens, percent of the bar.
- * `wide` lays the rows out in columns, for a card that spans the page.
- */
-function ShareBreakdown({ view, wide = false }: { view: TokenShareView; wide?: boolean }) {
-	const { segments, categoryColors } = view;
-	return (
-		<div className="stack" style={{ gap: 10 }}>
-			<ShareBar
-				segments={segments.map(s => ({
-					key: s.key,
-					label: segmentLabel(s),
-					value: s.tokens,
-					color: segmentColor(s, categoryColors),
-				}))}
-			/>
-			<div className={wide ? "grid grid-3" : "stack"} style={{ gap: wide ? "10px 28px" : 10 }}>
-				{segments.map(s => (
-					<div key={s.key} className="row" style={{ justifyContent: "space-between" }}>
-						<span className="row" style={{ minWidth: 0 }}>
-							<span className="swatch" style={{ background: segmentColor(s, categoryColors) }} />
-							<span className="truncate">{segmentLabel(s)}</span>
-							<span className="dim num" style={{ flexShrink: 0 }}>
-								{formatInteger(s.requests)} req
-							</span>
-						</span>
-						<span className="row" style={{ flexShrink: 0 }}>
-							<span className="dim num">{formatCompact(s.tokens)}</span>
-							<span className="num" style={{ minWidth: 48, textAlign: "right" }}>
-								{formatPercent(s.share)}
-							</span>
-						</span>
-					</div>
-				))}
+			<div className="row">
+				<a className="btn" data-size="sm" data-variant="ghost" href={`#/accounts?range=${range}`}>
+					Accounts &amp; quota <ArrowRight size={13} />
+				</a>
+				<a className="btn" data-size="sm" data-variant="ghost" href={`#/requests?range=${range}`}>
+					All requests <ArrowRight size={13} />
+				</a>
 			</div>
 		</div>
 	);
 }
-
-const REQUEST_COLUMNS = [
-	{
-		key: "model",
-		header: "Model",
-		render: (row: MessageStats) => <LabelCell primary={row.model} secondary={row.provider} />,
-	},
-	{
-		key: "time",
-		header: "When",
-		render: (row: MessageStats) => <span className="muted">{formatRelativeTime(row.timestamp)}</span>,
-	},
-	{
-		key: "tokens",
-		header: "Tokens",
-		align: "right" as const,
-		render: (row: MessageStats) => <span className="num">{formatInteger(row.usage.totalTokens)}</span>,
-	},
-	{
-		key: "cost",
-		header: "Cost",
-		align: "right" as const,
-		render: (row: MessageStats) => <span className="num">{formatMessageCost(row, 4)}</span>,
-	},
-	{
-		key: "duration",
-		header: "Duration",
-		align: "right" as const,
-		render: (row: MessageStats) => <span className="num">{formatDurationMs(row.duration)}</span>,
-	},
-	{
-		key: "status",
-		header: "Status",
-		align: "right" as const,
-		render: (row: MessageStats) =>
-			row.errorMessage ? <Badge tone="bad">Failed</Badge> : <Badge tone="ok">OK</Badge>,
-	},
-];

@@ -44,13 +44,17 @@ import {
 import { createProxyGate, type ProxyGate, STATS_PROXY_PROOF_HEADER } from "./proxy-gate";
 import { getStatsByModel, getTimeSeries } from "./rollup";
 import { buildSpotlightDashboardJson, getSpotlightSessionContext } from "./spotlight-aggregator";
+import type { SessionTraceTrackResponse } from "./types";
 import {
 	buildSessionTrace,
+	compactSessionTrace,
 	getTraceEntry,
 	listSessionSummaries,
+	listSessionSubagents,
 	TRACE_ETAG_VERSION,
 	type TraceFingerprint,
 	traceEtagForFingerprint,
+	traceEtagHash,
 	traceFingerprintForEtag,
 	TracePathError,
 } from "./trace";
@@ -218,6 +222,64 @@ export function setStatsCloseHandler(close: (() => void) | undefined): void {
 	closeHandler = close;
 }
 
+const GZIP_MIN_BYTES = 16 * 1024;
+
+export function acceptsGzip(header: string | null): boolean {
+	let gzip: number | undefined;
+	let wildcard: number | undefined;
+	for (const token of (header ?? "").split(",")) {
+		const [rawCoding, ...params] = token.trim().toLowerCase().split(";");
+		const coding = rawCoding.trim();
+		let q = 1;
+		for (const param of params) {
+			const [key, value] = param.trim().split("=");
+			if (key.trim() !== "q") continue;
+			q = Number(value);
+			if (!Number.isFinite(q) || q < 0 || q > 1) q = 0;
+		}
+		if (coding === "gzip") gzip = q;
+		else if (coding === "*") wildcard = q;
+	}
+	return (gzip ?? wildcard ?? 0) > 0;
+}
+
+/** Add `token` to a response's Vary header, keeping the tokens already there (no duplicates; `*` already covers it). */
+export function mergeVary(headers: Headers, token: string): void {
+	const tokens = (headers.get("vary") ?? "")
+		.split(",")
+		.map(value => value.trim())
+		.filter(Boolean);
+	if (tokens.some(value => value === "*" || value.toLowerCase() === token.toLowerCase())) return;
+	headers.set("Vary", [...tokens, token].join(", "));
+}
+
+/**
+ * Gzip API JSON of GZIP_MIN_BYTES or more when the request accepts it. Every response whose encoding depends on
+ * Accept-Encoding (JSON 200s, compressed or not, and their 304 revalidations) says so with `Vary: Accept-Encoding`,
+ * merged into any Vary the handler already set, so caches never hand one encoding to a client that asked for another.
+ */
+export async function compressApiResponse(req: Request, response: Response): Promise<Response> {
+	if (response.status === 304) {
+		const headers = new Headers(response.headers);
+		mergeVary(headers, "Accept-Encoding");
+		return new Response(null, { status: 304, headers });
+	}
+	if (
+		response.status !== 200 ||
+		response.headers.has("content-encoding") ||
+		!response.headers.get("content-type")?.startsWith("application/json")
+	)
+		return response;
+	const headers = new Headers(response.headers);
+	mergeVary(headers, "Accept-Encoding");
+	const body = new Uint8Array(await response.arrayBuffer());
+	if (!acceptsGzip(req.headers.get("accept-encoding")) || body.byteLength < GZIP_MIN_BYTES)
+		return new Response(body, { status: response.status, headers });
+	headers.set("Content-Encoding", "gzip");
+	headers.delete("Content-Length");
+	return new Response(Bun.gzipSync(body, { level: 6 }), { status: response.status, headers });
+}
+
 /**
  * Handle API requests.
  */
@@ -376,10 +438,45 @@ export async function handleApi(req: Request): Promise<Response> {
 	}
 
 	if (path === "/api/sessions") {
-		const limitParam = Number(url.searchParams.get("limit") ?? "100");
-		const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.floor(limitParam) : 100;
+		const limitParam = Number(url.searchParams.get("limit") ?? "200");
+		const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(500, Math.floor(limitParam)) : 200;
 		const q = url.searchParams.get("q") ?? undefined;
-		return Response.json(await listSessionSummaries(limit, q));
+		const beforeParam = url.searchParams.get("before");
+		const afterParam = url.searchParams.get("after");
+		const before = beforeParam === null ? undefined : Number(beforeParam);
+		const after = afterParam === null ? undefined : Number(afterParam);
+		return Response.json(
+			await listSessionSummaries(limit, q, {
+				before: before !== undefined && Number.isFinite(before) ? before : undefined,
+				beforeFile: url.searchParams.get("beforeFile") ?? undefined,
+				after: after !== undefined && Number.isFinite(after) ? after : undefined,
+				version: statsLive().status().version,
+				folder: url.searchParams.get("folder") ?? undefined,
+			}),
+		);
+	}
+
+	if (path === "/api/session/subagents") {
+		const file = url.searchParams.get("file");
+		if (!file) return Response.json({ error: "file required" }, { status: 400 });
+		try {
+			const rows = await listSessionSubagents(file, url.searchParams.get("parentLive") === "1");
+			// Leave room for the closing bracket, even for heavily escaped Unicode metadata.
+			const items: string[] = [];
+			let bytes = 2;
+			for (const row of rows) {
+				const item = JSON.stringify(row);
+				const size = Buffer.byteLength(item) + (items.length ? 1 : 0);
+				if (bytes + size >= 20_000) break;
+				items.push(item);
+				bytes += size;
+			}
+			return new Response(`[${items.join(",")}]`, { headers: { "content-type": "application/json;charset=utf-8" } });
+		} catch (err) {
+			if (err instanceof TracePathError) return Response.json({ error: err.message }, { status: 400 });
+			if (isEnoent(err)) return Response.json({ error: "session not found" }, { status: 404 });
+			throw err;
+		}
 	}
 
 	if (path === "/api/session/trace") {
@@ -405,7 +502,26 @@ export async function handleApi(req: Request): Promise<Response> {
 			const trace = await buildSessionTrace(file, fingerprint);
 			const etag = `"${TRACE_ETAG_VERSION}:${trace.etag}"`;
 			if (clientEtag === etag) return new Response(null, { status: 304 });
-			return Response.json(trace, { headers: { ETag: etag } });
+			return Response.json(compactSessionTrace(trace), { headers: { ETag: etag } });
+		} catch (err) {
+			if (err instanceof TracePathError) return Response.json({ error: err.message }, { status: 400 });
+			if (isEnoent(err)) return Response.json({ error: "session not found" }, { status: 404 });
+			throw err;
+		}
+	}
+
+	if (path === "/api/session/trace-track") {
+		const file = url.searchParams.get("file");
+		const trackParam = url.searchParams.get("track");
+		if (!file || !trackParam) return Response.json({ error: "file and track required" }, { status: 400 });
+		try {
+			const trace = await buildSessionTrace(file);
+			const track = trace.tracks.find(t => t.id === trackParam);
+			if (!track) return Response.json({ error: "track not found" }, { status: 404 });
+			const body = JSON.stringify({ track } satisfies SessionTraceTrackResponse);
+			const etag = `"${TRACE_ETAG_VERSION}:${traceEtagHash(body)}"`;
+			if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304 });
+			return new Response(body, { headers: { "content-type": "application/json;charset=utf-8", ETag: etag } });
 		} catch (err) {
 			if (err instanceof TracePathError) return Response.json({ error: err.message }, { status: 400 });
 			if (isEnoent(err)) return Response.json({ error: "session not found" }, { status: 404 });
@@ -527,6 +643,7 @@ function createDashboardServer(port: number, hostname: string, gate?: ProxyGate)
 	const server = Bun.serve({
 		port,
 		hostname,
+		idleTimeout: 60,
 		async fetch(req, server) {
 			const url = new URL(req.url);
 			if (!isRebindSafeHost(url.hostname, allowedHosts)) {
@@ -573,21 +690,20 @@ function createDashboardServer(port: number, hostname: string, gate?: ProxyGate)
 				let response: Response;
 
 				if (path.startsWith("/api/")) {
-					response = await handleApi(req);
+					response = await compressApiResponse(req, await handleApi(req));
 				} else {
 					response = await handleStatic(path);
 				}
 
 				// Add the dashboard identity header to all responses.
-				const headers = new Headers(response.headers);
-				for (const key in dashboardHeaders) {
-					headers.set(key, dashboardHeaders[key]);
+				try {
+					for (const key in dashboardHeaders) response.headers.set(key, dashboardHeaders[key]);
+					return response;
+				} catch {
+					const headers = new Headers(response.headers);
+					for (const key in dashboardHeaders) headers.set(key, dashboardHeaders[key]);
+					return new Response(await response.arrayBuffer(), { status: response.status, headers });
 				}
-
-				return new Response(response.body, {
-					status: response.status,
-					headers,
-				});
 			} catch (error) {
 				logger.error("Stats dashboard request failed", { path, error: String(error) });
 				return Response.json(

@@ -39,6 +39,7 @@ export type QueryFetcher<T> = (context: QueryFetchContext, previous: T | undefin
 const defaultBucket: CacheBucket = { entries: new Map(), limit: 128 };
 /** Full session traces: MBs each, at most a few worth keeping. */
 const traceBucket: CacheBucket = { entries: new Map(), limit: 4 };
+const traceTrackBucket: CacheBucket = { entries: new Map(), limit: 64 };
 /** Request detail payloads (full prompts and responses). */
 const requestBucket: CacheBucket = { entries: new Map(), limit: 16 };
 
@@ -46,6 +47,7 @@ const inflight = new Map<string, Inflight>();
 
 function bucketFor(key: string): CacheBucket {
 	if (key.startsWith('["trace",')) return traceBucket;
+	if (key.startsWith('["trace-track",')) return traceTrackBucket;
 	if (key.startsWith('["request",')) return requestBucket;
 	return defaultBucket;
 }
@@ -111,5 +113,6 @@ export function releaseQuery(key: string, request: Inflight): void {
 export function clearQueryCache(): void {
 	defaultBucket.entries.clear();
 	traceBucket.entries.clear();
+	traceTrackBucket.entries.clear();
 	requestBucket.entries.clear();
 }

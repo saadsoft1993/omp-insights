@@ -1,3 +1,7 @@
+import { ALL_MACHINES, concreteMachine, useSelectedMachine } from "../app/machine";
+import { MissingMachineNumbers } from "../app/MachineBanner";
+import { fleetQueryView, useFleetQuery } from "../data/fleet-query";
+import { mergeLive } from "../data/fleet-merge";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { getLiveTrafficStats } from "../api";
 import { OTHER_COLOR, SERIES_COLORS } from "../data/colors";
@@ -42,6 +46,7 @@ const STATE: Record<LiveTargetState, { label: string; tone: Tone }> = {
 	quiet: { label: "Quiet", tone: "neutral" },
 	rate_limited: { label: "Rate-limited", tone: "bad" },
 	needs_login: { label: "Needs login", tone: "bad" },
+	removed: { label: "Not added here", tone: "neutral" },
 };
 
 /** Short "12s ago" style age, for numbers that move every refresh. */
@@ -72,10 +77,18 @@ function useTargetColors(): (target: Pick<LiveTarget, "key" | "kind">) => string
 }
 
 export function LiveRoute({ active }: LiveRouteProps) {
-	const live = useQuery(["live"], ({ signal }) => getLiveTrafficStats(signal), {
-		enabled: active,
+	const all = useSelectedMachine() === ALL_MACHINES;
+	const single = useQuery(["live"], ({ signal }) => getLiveTrafficStats(signal, concreteMachine()), {
+		enabled: active && !all,
 		pollMs: REFRESH_MS,
 	});
+	const fleet = useFleetQuery(
+		["live"],
+		async (machine, signal) => ({ machine, data: await getLiveTrafficStats(signal, machine) }),
+		mergeLive,
+		{ enabled: active && all, pollMs: REFRESH_MS },
+	);
+	const live = all ? fleetQueryView(single, fleet) : single;
 	const colorOf = useTargetColors();
 
 	return (
@@ -88,6 +101,7 @@ export function LiveRoute({ active }: LiveRouteProps) {
 						: "Which sessions are sending requests to which account right now."
 				}
 			/>
+			{all && <MissingMachineNumbers machines={fleet.machines} />}
 			<div className="live-legend">
 				<span>
 					<Dot tone="ok" /> Active: completed a request in the last minute
@@ -112,27 +126,30 @@ export function LiveRoute({ active }: LiveRouteProps) {
 				title="Sessions and accounts"
 				description="Lines show where each session's requests went in the last 5 minutes"
 			>
-				<QueryView query={live} skeleton={<ChartSkeleton height={260} />}>
+				<QueryView hideError query={live} skeleton={<ChartSkeleton height={260} />}>
 					{data => <FlowStage data={data} colorOf={colorOf} animate={active} />}
 				</QueryView>
 			</Card>
 
 			<Card index={2} title="Latest requests" description="Last 5 minutes" flush>
-				<QueryView query={live} skeleton={<ChartSkeleton height={160} />}>
+				<QueryView hideError query={live} skeleton={<ChartSkeleton height={160} />}>
 					{data => <LatestRequests data={data} colorOf={colorOf} />}
 				</QueryView>
 			</Card>
 
-			<p className="live-note">
-				Dots are spawned at each line's average rate over the last minute (one dot per completed request; above 6 a
-				second the rate is capped), so they show volume, not the exact moment each request happened. Requests appear
-				when they complete: a long request in flight shows up only when it finishes. Dashed lines carried traffic in
-				the last 5 minutes but not the last minute. Sources are omp sessions; their subagents' requests count toward
-				the session's line and are listed per agent inside its card. ▸ is the last tool the session or agent
-				started, with omp's intent text. Agent states come from their transcripts: running (still writing, no exit),
-				done, waiting (ended its turn; can be messaged again), finished (exited), no activity (no exit recorded and
-				silent for 15 minutes).
-			</p>
+			<details className="hub-help">
+				<summary>How to read live traffic</summary>
+				<p className="live-note">
+					Dots are spawned at each line's average rate over the last minute (one dot per completed request; above 6
+					a second the rate is capped), so they show volume, not the exact moment each request happened. Requests
+					appear when they complete: a long request in flight shows up only when it finishes. Dashed lines carried
+					traffic in the last 5 minutes but not the last minute. Sources are omp sessions; their subagents'
+					requests count toward the session's line and are listed per agent inside its card. ▸ is the last tool the
+					session or agent started, with omp's intent text. Agent states come from their transcripts: running
+					(still writing, no exit), done, waiting (ended its turn; can be messaged again), finished (exited), no
+					activity (no exit recorded and silent for 15 minutes).
+				</p>
+			</details>
 		</div>
 	);
 }
@@ -394,7 +411,11 @@ function SessionCard({
 					<div className="live-name" title={session.id}>
 						{working && <Dot tone="live" pulse />} {session.name}
 					</div>
-					<div className="live-meta live-started">{[project, started].filter(Boolean).join(" · ")}</div>
+					<div className="live-meta live-started">
+						{[(session as LiveSession & { machine?: string }).machine, project, started]
+							.filter(Boolean)
+							.join(" · ")}
+					</div>
 				</div>
 				<div className="live-rate">
 					{formatInteger(session.rpm)}

@@ -14,6 +14,7 @@ import {
 	buildSessionTraceFromSnapshots,
 	getTraceEntry,
 	listSessionSummaries,
+	readSessionMetadata,
 	TracePathError,
 } from "@oh-my-pi/omp-stats/trace";
 import type { SessionEntry, SessionHeader } from "@oh-my-pi/omp-stats/types";
@@ -751,6 +752,139 @@ describe("getTraceEntry", () => {
 });
 
 describe("listSessionSummaries", () => {
+	it("extracts the first user message and falls back to the filename id", async () => {
+		const id = "12345678-1234-1234-1234-123456789abc";
+		const file = path.join(getSessionsDir(), "metadata", `session_${id}.jsonl`);
+		await fs.mkdir(path.dirname(file), { recursive: true });
+		await Bun.write(
+			file,
+			[
+				JSON.stringify({ type: "title", title: "  " }),
+				JSON.stringify({ type: "session", cwd: "/tmp/project", parentSession: `/tmp/other_${id}.jsonl` }),
+				JSON.stringify({
+					type: "message",
+					message: { role: "user", content: [{ type: "text", text: " hello world " }] },
+				}),
+			].join("\n"),
+		);
+		expect(await readSessionMetadata(file)).toMatchObject({
+			title: null,
+			firstMessage: "hello world",
+			sessionId: id,
+			cwd: "/tmp/project",
+			parentSession: id,
+		});
+	});
+	it("indexes the bounded prefix of a user message crossing the scan boundary", async () => {
+		const dir = path.join(getSessionsDir(), "long-prompt");
+		await fs.mkdir(dir, { recursive: true });
+		for (const [name, content] of [
+			["string", `Find this prompt: "quoted" \\ path ${"x".repeat(20000)}`],
+			["blocks", [{ type: "text", text: `Find this prompt: "quoted" \\ path ${"x".repeat(20000)}` }]],
+		] as const) {
+			const file = path.join(dir, `${name}.jsonl`);
+			await Bun.write(
+				file,
+				[
+					JSON.stringify({ type: "session", id: "12345678-1234-1234-1234-123456789abc", cwd: "/tmp" }),
+					JSON.stringify({ type: "message", message: { role: "user", content } }),
+				].join("\n"),
+			);
+			expect((await readSessionMetadata(file)).firstMessage).toStartWith('Find this prompt: "quoted" \\ path');
+		}
+		expect(await listSessionSummaries(200, "Find this prompt")).toHaveLength(2);
+	});
+
+	it("reads header ids and a user message beyond the old scan size", async () => {
+		const id = "12345678-1234-1234-1234-123456789abc";
+		const parent = "abcdefab-cdef-abcd-efab-cdefabcdefab";
+		const file = path.join(getSessionsDir(), "headers", `root_${id}.jsonl`);
+		await fs.mkdir(path.dirname(file), { recursive: true });
+		await Bun.write(
+			file,
+			[
+				JSON.stringify({
+					type: "session",
+					id,
+					cwd: "/tmp",
+					parentSession: `/tmp/root_${parent}.jsonl`,
+					continuationOf: parent,
+				}),
+				JSON.stringify({ type: "custom", data: { padding: "x".repeat(6000) } }),
+				JSON.stringify({ type: "message", message: { role: "user", content: " long scan message " } }),
+			].join("\n"),
+		);
+		expect(await readSessionMetadata(file)).toMatchObject({
+			sessionId: id,
+			cwd: "/tmp",
+			parentSession: parent,
+			continuationOf: parent,
+			firstMessage: "long scan message",
+		});
+	});
+
+	it("folds an indexed root into its compressed transcript by stem", async () => {
+		const file = await writeFixture();
+		await syncAllSessions();
+		const content = await fs.readFile(file);
+		await Bun.write(`${file}.gz`, Bun.gzipSync(content));
+		await fs.unlink(file);
+		const rows = await listSessionSummaries();
+		const matches = rows.filter(row => row.file === file || row.file === `${file}.gz`);
+		expect(matches).toHaveLength(1);
+		expect(matches[0]).toMatchObject({ file: `${file}.gz`, missing: false, subagents: 2 });
+	});
+
+	it("pages tied fractional mtimes without gaps and applies server filters", async () => {
+		const dir = path.join(getSessionsDir(), "paging");
+		await fs.mkdir(dir, { recursive: true });
+		const files = ["a", "b", "c"].map(name => path.join(dir, `${name}.jsonl`));
+		for (const file of files) {
+			await Bun.write(file, JSON.stringify({ type: "session", cwd: "/tmp/paging" }));
+			await fs.utimes(file, 1700000000.1255, 1700000000.1255);
+		}
+		const first = await listSessionSummaries(2);
+		expect(first.map(row => row.file)).toEqual(files.slice(0, 2));
+		const last = first[1];
+		expect(last.endedAt % 1).not.toBe(0);
+		const next = await listSessionSummaries(2, undefined, { before: last.endedAt, beforeFile: last.file });
+		expect(next.map(row => row.file)).toEqual([files[2]]);
+		expect(await listSessionSummaries(2, undefined, { after: last.endedAt + 1 })).toEqual([]);
+		expect((await listSessionSummaries(2, undefined, { folder: "/tmp/paging" })).length).toBe(2);
+		expect(await listSessionSummaries(2, undefined, { folder: "/not-a-folder" })).toEqual([]);
+	});
+
+	it("searches older roots beyond the former cap", async () => {
+		const dir = path.join(getSessionsDir(), "many");
+		await fs.mkdir(dir, { recursive: true });
+		await Promise.all(
+			Array.from({ length: 305 }, async (_, i) => {
+				const file = path.join(dir, `${String(i).padStart(3, "0")}.jsonl`);
+				await Bun.write(file, JSON.stringify({ type: "title", title: i === 0 ? "needle far away" : "other" }));
+				await fs.utimes(file, 1700000000 + i, 1700000000 + i);
+			}),
+		);
+		const rows = await listSessionSummaries(5, "needle far away");
+		expect(rows).toHaveLength(1);
+		expect(rows[0].file.endsWith("/000.jsonl")).toBe(true);
+	});
+
+	it("marks indexed roots missing after deletion", async () => {
+		const file = await writeFixture();
+		await syncAllSessions();
+		await fs.unlink(file);
+		const rows = await listSessionSummaries();
+		expect(rows.find(row => row.file === file)?.missing).toBe(true);
+	});
+
+	it("recovers the filename id when a header exceeds the scan", async () => {
+		const id = "12345678-1234-1234-1234-123456789abc";
+		const file = path.join(getSessionsDir(), "headers", `root_${id}.jsonl`);
+		await fs.mkdir(path.dirname(file), { recursive: true });
+		await Bun.write(file, JSON.stringify({ type: "session", id, cwd: "/tmp", padding: "x".repeat(17000) }));
+		expect(await readSessionMetadata(file)).toMatchObject({ sessionId: id, cwd: null });
+	});
+
 	it("uses the session cwd for home-relative storage keys and keeps the legacy path fallback", async () => {
 		const sessionsDir = getSessionsDir();
 		const currentFile = path.join(sessionsDir, "-project-omp-kit", "current.jsonl");
@@ -768,7 +902,7 @@ describe("listSessionSummaries", () => {
 					version: 3,
 					id: "current",
 					timestamp: iso(T),
-					cwd: "/home/han/project/omp-kit",
+					cwd: "/home/me/project/omp-kit",
 					title: "Stale header title",
 				},
 			]
@@ -786,7 +920,7 @@ describe("listSessionSummaries", () => {
 							version: 3,
 							id: "compressed",
 							timestamp: iso(T),
-							cwd: "/home/han/project/compressed",
+							cwd: "/home/me/project/compressed",
 						},
 					]
 						.map(entry => JSON.stringify(entry))
@@ -797,9 +931,9 @@ describe("listSessionSummaries", () => {
 		await Bun.write(legacyFile, JSON.stringify({ type: "title", v: 1, title: "Legacy session" }));
 
 		const rows = await listSessionSummaries();
-		expect(rows.find(row => row.file === currentFile)?.folder).toBe("/home/han/project/omp-kit");
+		expect(rows.find(row => row.file === currentFile)?.folder).toBe("/home/me/project/omp-kit");
 		expect(rows.find(row => row.file === currentFile)?.title).toBe("Current title");
-		expect(rows.find(row => row.file === compressedFile)?.folder).toBe("/home/han/project/compressed");
+		expect(rows.find(row => row.file === compressedFile)?.folder).toBe("/home/me/project/compressed");
 		expect(rows.find(row => row.file === compressedFile)?.title).toBe("Compressed title");
 		expect(rows.find(row => row.file === legacyFile)?.folder).toBe("/work/legacy/");
 	});

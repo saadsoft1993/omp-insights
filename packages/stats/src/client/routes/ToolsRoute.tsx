@@ -1,3 +1,7 @@
+import { ALL_MACHINES, concreteMachine, useSelectedMachine } from "../app/machine";
+import { MissingMachineNumbers } from "../app/MachineBanner";
+import { fleetQueryView, useFleetQuery } from "../data/fleet-query";
+import { mergeTools } from "../data/fleet-merge";
 import { X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { getToolDashboardStats } from "../api";
@@ -57,7 +61,17 @@ const ATTRIBUTION_NOTE =
 const NO_CALLS = <EmptyState title="No tool calls in this range" />;
 
 export function ToolsRoute({ active, range }: ToolsRouteProps) {
-	const tools = useQuery(["tools", range], ({ signal }) => getToolDashboardStats(range, signal), { enabled: active });
+	const allMachines = useSelectedMachine() === ALL_MACHINES;
+	const single = useQuery(["tools", range], ({ signal }) => getToolDashboardStats(range, signal, concreteMachine()), {
+		enabled: active && !allMachines,
+	});
+	const fleet = useFleetQuery(
+		["tools", range],
+		(machine, signal) => getToolDashboardStats(range, signal, machine),
+		mergeTools,
+		{ enabled: active && allMachines },
+	);
+	const tools = allMachines ? fleetQueryView(single, fleet) : single;
 	const [metric, setMetric] = useState<CallMetric>("calls");
 	const [hidden, toggleHidden] = useHiddenSeries();
 	const [pickedTool, setToolFilter] = useState<string | null>(null);
@@ -72,6 +86,7 @@ export function ToolsRoute({ active, range }: ToolsRouteProps) {
 
 	return (
 		<div className="page">
+			{allMachines && <MissingMachineNumbers machines={fleet.machines} />}
 			<PageHeader
 				title="Tools"
 				description={`Which tools omp called in ${meta.windowLabel}, how often they failed, and what they cost.`}
@@ -155,7 +170,13 @@ export function ToolsRoute({ active, range }: ToolsRouteProps) {
 				actions={<Segmented size="sm" options={METRIC_OPTIONS} value={metric} onChange={setMetric} />}
 				stale={tools.stale}
 			>
-				<QueryView query={tools} skeleton={<ChartSkeleton height={260} />} isEmpty={isEmpty} empty={NO_CALLS}>
+				<QueryView
+					hideError
+					query={tools}
+					skeleton={<ChartSkeleton height={260} />}
+					isEmpty={isEmpty}
+					empty={NO_CALLS}
+				>
 					{() => (
 						<div className="stack" style={{ gap: 12 }}>
 							<TimeChart
@@ -189,7 +210,7 @@ export function ToolsRoute({ active, range }: ToolsRouteProps) {
 				flush
 				stale={tools.stale}
 			>
-				<QueryView query={tools} skeleton={<TableSkeleton rows={8} />} isEmpty={isEmpty} empty={NO_CALLS}>
+				<QueryView hideError query={tools} skeleton={<TableSkeleton rows={8} />} isEmpty={isEmpty} empty={NO_CALLS}>
 					{() => (
 						<Table
 							rows={view.rows}
@@ -243,7 +264,7 @@ export function ToolsRoute({ active, range }: ToolsRouteProps) {
 					</div>
 				}
 			>
-				<QueryView query={tools} skeleton={<TableSkeleton rows={8} />} isEmpty={isEmpty} empty={NO_CALLS}>
+				<QueryView hideError query={tools} skeleton={<TableSkeleton rows={8} />} isEmpty={isEmpty} empty={NO_CALLS}>
 					{data => <ToolModelTable rows={data.byToolModel} tool={toolFilter} colors={view.colors} />}
 				</QueryView>
 			</Card>

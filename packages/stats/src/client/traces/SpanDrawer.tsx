@@ -14,6 +14,9 @@ import { Badge, Drawer, type DrawerProps, ErrorState, JsonBlock, KeyValues, Skel
 
 export type TraceEntryLoader = (file: string, entryId: string, signal: AbortSignal) => Promise<{ entry: unknown }>;
 
+const loadLocalEntry: TraceEntryLoader = (file, entryId, signal) =>
+	getSessionEntryDetail(file, entryId, signal, undefined);
+
 export interface SpanDrawerProps {
 	span: TraceSpan | null;
 	track: TraceTrack | null;
@@ -89,7 +92,7 @@ export function SpanDrawer({
 	track,
 	onClose,
 	onOpenChildTrack,
-	loadEntry = getSessionEntryDetail,
+	loadEntry = loadLocalEntry,
 	inline = false,
 	onNavigate,
 }: SpanDrawerProps) {

@@ -1,3 +1,7 @@
+import { ALL_MACHINES, concreteMachine, useSelectedMachine } from "../app/machine";
+import { MissingMachineNumbers } from "../app/MachineBanner";
+import { fleetQueryView, useFleetQuery } from "../data/fleet-query";
+import { mergeFrustration } from "../data/fleet-merge";
 import { Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -53,10 +57,22 @@ const ALL_CLASSES = "*";
 
 export function FrustrationRoute({ active, range }: FrustrationRouteProps) {
 	const [running, setRunning] = useState(false);
-	const stats = useQuery(["frustration", range], ({ signal }) => getFrustrationDashboardStats(range, signal), {
-		enabled: active,
-		pollMs: running ? RUNNING_POLL_MS : undefined,
-	});
+	const allMachines = useSelectedMachine() === ALL_MACHINES;
+	const single = useQuery(
+		["frustration", range],
+		({ signal }) => getFrustrationDashboardStats(range, signal, concreteMachine()),
+		{
+			enabled: active && !allMachines,
+			pollMs: running ? RUNNING_POLL_MS : undefined,
+		},
+	);
+	const fleet = useFleetQuery(
+		["frustration", range],
+		(machine, signal) => getFrustrationDashboardStats(range, signal, machine),
+		mergeFrustration,
+		{ enabled: active && allMachines },
+	);
+	const stats = allMachines ? fleetQueryView(single, fleet) : single;
 	const meta = rangeMeta(range);
 
 	const jobState = stats.data?.job.state;
@@ -72,6 +88,7 @@ export function FrustrationRoute({ active, range }: FrustrationRouteProps) {
 
 	return (
 		<div className="page">
+			{allMachines && <MissingMachineNumbers machines={fleet.machines} />}
 			<PageHeader
 				title="Frustration"
 				description={`How often your messages sound annoyed, per model version, in ${meta.windowLabel}.`}
@@ -85,20 +102,27 @@ export function FrustrationRoute({ active, range }: FrustrationRouteProps) {
 				)}
 			</QueryView>
 
-			<QueryView query={stats} skeleton={<ChartSkeleton height={120} />}>
-				{data => (
-					<JudgePanel
-						active={active}
-						range={range}
-						judgeAvailable={data.judgeAvailable}
-						job={data.job}
-						onRunStarted={handleRunStarted}
-						onRunChanged={refetch}
-					/>
-				)}
-			</QueryView>
+			{allMachines ? (
+				<Card index={1} title="Judge classification">
+					<p>Pick one machine to run a review.</p>
+				</Card>
+			) : (
+				<QueryView hideError query={stats} skeleton={<ChartSkeleton height={120} />}>
+					{data => (
+						<JudgePanel
+							active={active}
+							range={range}
+							judgeAvailable={data.judgeAvailable}
+							job={data.job}
+							onRunStarted={handleRunStarted}
+							onRunChanged={refetch}
+						/>
+					)}
+				</QueryView>
+			)}
 
 			<QueryView
+				hideError
 				query={stats}
 				skeleton={
 					<Card index={2} title="Frustration by model version">
@@ -192,6 +216,7 @@ const UNAVAILABLE_HINT =
 	"Judging needs the omp host process: open the dashboard with omp stats and configure a judge model. Until then messages are classified by regex signals.";
 
 function JudgePanel({ active, range, judgeAvailable, job, onRunStarted, onRunChanged }: JudgePanelProps) {
+	const allMachines = useSelectedMachine() === ALL_MACHINES;
 	const [modalOpen, setModalOpen] = useState(false);
 	const [estimate, setEstimate] = useState<EstimateState>({ status: "loading" });
 	const [starting, setStarting] = useState(false);
@@ -215,6 +240,7 @@ function JudgePanel({ active, range, judgeAvailable, job, onRunStarted, onRunCha
 	useEffect(() => () => estimateAbortRef.current?.abort(), []);
 
 	const openEstimate = () => {
+		if (allMachines) return;
 		estimateAbortRef.current?.abort();
 		const controller = new AbortController();
 		estimateAbortRef.current = controller;
@@ -223,7 +249,7 @@ function JudgePanel({ active, range, judgeAvailable, job, onRunStarted, onRunCha
 		setStartError(null);
 		setActionError(null);
 		setModalOpen(true);
-		getFrustrationEstimate(quotedRange, controller.signal).then(
+		getFrustrationEstimate(quotedRange, controller.signal, concreteMachine()).then(
 			result => {
 				if (!controller.signal.aborted) setEstimate({ status: "ready", estimate: result, range: quotedRange });
 			},
@@ -234,12 +260,12 @@ function JudgePanel({ active, range, judgeAvailable, job, onRunStarted, onRunCha
 	};
 
 	const proceed = async () => {
-		if (estimate.status !== "ready") return;
+		if (allMachines || estimate.status !== "ready") return;
 		setStarting(true);
 		setStartError(null);
 		try {
 			// Judge exactly the range that was quoted, even if the picker moved meanwhile.
-			await startFrustrationRun(estimate.range);
+			await startFrustrationRun(estimate.range, concreteMachine());
 			closeModal();
 			onRunStarted();
 		} catch (err) {
@@ -250,10 +276,11 @@ function JudgePanel({ active, range, judgeAvailable, job, onRunStarted, onRunCha
 	};
 
 	const cancelRun = async () => {
+		if (allMachines) return;
 		setCancelling(true);
 		setActionError(null);
 		try {
-			await cancelFrustrationRun();
+			await cancelFrustrationRun(concreteMachine());
 			onRunChanged();
 		} catch (err) {
 			setActionError(errorMessage(err));
@@ -270,7 +297,7 @@ function JudgePanel({ active, range, judgeAvailable, job, onRunStarted, onRunCha
 				? {
 						label: starting ? "Starting…" : "Proceed",
 						onClick: proceed,
-						disabled: starting || quote.messages === 0,
+						disabled: allMachines || starting || quote.messages === 0,
 					}
 				: undefined;
 
@@ -290,7 +317,7 @@ function JudgePanel({ active, range, judgeAvailable, job, onRunStarted, onRunCha
 					data-variant="accent"
 					data-size="sm"
 					onClick={openEstimate}
-					disabled={!judgeAvailable || running}
+					disabled={allMachines || !judgeAvailable || running}
 					title={
 						!judgeAvailable
 							? UNAVAILABLE_HINT
@@ -305,7 +332,7 @@ function JudgePanel({ active, range, judgeAvailable, job, onRunStarted, onRunCha
 		>
 			<div className="stack frustration-judge">
 				{running ? (
-					<JudgeProgress job={job} cancelling={cancelling} onCancel={cancelRun} />
+					<JudgeProgress job={job} cancelling={cancelling || allMachines} onCancel={cancelRun} />
 				) : (
 					<JudgeResultLine job={job} />
 				)}

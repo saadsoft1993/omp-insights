@@ -1,3 +1,4 @@
+import { concreteMachine } from "../app/machine";
 import { GitBranch } from "lucide-react";
 import { getRequestDetails } from "../api";
 import {
@@ -29,14 +30,19 @@ export const REQUEST_STATUS: Record<RequestStatus, { label: string; tone: Tone }
 
 export interface RequestDrawerProps {
 	id: number | null;
+	machine?: string;
 	onClose: () => void;
 }
 
 /** Full detail sheet for one model request: timing, tokens, cost, ids, error, and the raw session entry. */
-export function RequestDrawer({ id, onClose }: RequestDrawerProps) {
-	const query = useQuery(["request", id], ({ signal }) => getRequestDetails(id ?? 0, signal), {
-		enabled: id !== null,
-	});
+export function RequestDrawer({ id, machine, onClose }: RequestDrawerProps) {
+	const query = useQuery(
+		["request", id, machine],
+		({ signal }) => getRequestDetails(id ?? 0, signal, machine ?? concreteMachine()),
+		{
+			enabled: id !== null,
+		},
+	);
 	// Never show the previous request's payload under a new id.
 	const details = query.stale ? null : query.data;
 	const status = details ? REQUEST_STATUS[requestStatus(details)] : null;
@@ -68,6 +74,7 @@ export function RequestDrawer({ id, onClose }: RequestDrawerProps) {
 								...parseHash(window.location.hash),
 								section: "traces",
 								session: details.sessionFile,
+								traceMachine: machine ?? concreteMachine(),
 							})}
 							onClick={onClose}
 							title="Open this request's session in the trace view"

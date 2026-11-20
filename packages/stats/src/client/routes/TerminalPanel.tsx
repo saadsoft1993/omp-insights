@@ -36,6 +36,7 @@ export function TerminalPanel({
 	onSent?: () => void;
 }) {
 	const sessionId = session.sessionId ?? "";
+	const machine = session.machine;
 	// Unlock, screen and "screen seen" are each bound to the session they were made for, so a panel that is
 	// re-rendered for another session is locked at once, before any effect runs.
 	const [unlockedFor, setUnlockedFor] = useState<string | null>(null);
@@ -91,7 +92,7 @@ export function TerminalPanel({
 		setNotice(null);
 		setText("");
 		return () => lock(null);
-	}, [sessionId, lock]);
+	}, [sessionId, machine, lock]);
 	useEffect(() => {
 		if (!active) lock(null);
 	}, [active, lock]);
@@ -104,7 +105,7 @@ export function TerminalPanel({
 			load: () => {
 				readGen.current = sendGen.current;
 				readStart.current = performance.now();
-				return getSessionScreen(id);
+				return getSessionScreen(id, undefined, machine);
 			},
 			onScreen: shown => {
 				if (mine !== epoch.current || unlockedRef.current !== id) return;
@@ -138,7 +139,7 @@ export function TerminalPanel({
 			next.stop();
 			if (poller.current === next) poller.current = null;
 		};
-	}, [unlocked, sessionId, pollMs, staleMs, lock, revoke]);
+	}, [unlocked, sessionId, machine, pollMs, staleMs, lock, revoke]);
 
 	const send = async (keys: TerminalKey[], line?: string) => {
 		// Refused synchronously unless this very session is unlocked and its screen was seen since the last send.
@@ -155,11 +156,15 @@ export function TerminalPanel({
 		setNotice(null);
 		const mine = epoch.current;
 		try {
-			await sendSessionKeys(sessionId, {
-				requestId: newRequestId(),
-				keys,
-				...(line !== undefined ? { text: line } : {}),
-			});
+			await sendSessionKeys(
+				sessionId,
+				{
+					requestId: newRequestId(),
+					keys,
+					...(line !== undefined ? { text: line } : {}),
+				},
+				machine,
+			);
 			if (mine !== epoch.current) return;
 			if (line !== undefined) setText("");
 			onSent?.();
@@ -181,7 +186,7 @@ export function TerminalPanel({
 		<Card
 			title="Terminal"
 			description="Answer dialogs that only exist in the session's terminal"
-			className="sess-panel"
+			className="session-detail-panel"
 		>
 			<button
 				type="button"

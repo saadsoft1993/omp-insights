@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { ApiError } from "../src/client/api";
 import {
 	answerPlanReview,
@@ -18,6 +18,9 @@ import {
 import { PlanReviewPanel } from "../src/client/routes/PlanReviewPanel";
 import { SessionsRoute } from "../src/client/routes/SessionsRoute";
 import { all, byText, click, isDisabled, mount, settle, text, type, unmount } from "./helpers/memory-dom";
+import { installPlanWorker } from "./helpers/plan-worker";
+
+beforeEach(installPlanWorker);
 
 afterEach(unmount);
 
@@ -50,7 +53,7 @@ function session(over: Partial<HubSession> = {}): HubSession {
 	return {
 		instanceId: "inst-1",
 		sessionId: "sess-1",
-		cwd: "/Users/me/projects/sample-app",
+		cwd: "/Users/me/projects/app",
 		sessionName: "Retry work",
 		busy: false,
 		planControl: "supported",
@@ -84,7 +87,15 @@ function mockHub(handlers: {
 		if (url.endsWith("/plan-review")) return handlers.review?.() ?? json(review());
 		if (url.endsWith("/plan-answer")) return handlers.answer?.(body ?? {}) ?? json({ outcome: "accepted" });
 		if (url === "/api/hub/sessions") return handlers.sessions?.() ?? json({ sessions: [], now: Date.now() });
-		if (url === "/api/hub/quota") return json({ generatedAt: null, cacheAgeMs: null, cacheStale: false, source: "", providers: {}, accounts: [] });
+		if (url === "/api/hub/quota")
+			return json({
+				generatedAt: null,
+				cacheAgeMs: null,
+				cacheStale: false,
+				source: "",
+				providers: {},
+				accounts: [],
+			});
 		return json({ projects: [] });
 	}) as typeof fetch);
 	return calls;
@@ -176,7 +187,7 @@ describe("plan review rules", () => {
 });
 
 describe("plan review panel", () => {
-	it("shows the title, path, note, plan as plain text and the five options in order", async () => {
+	it("shows the title, path, note, markdown plan and the five options in order", async () => {
 		mockHub({});
 		const h = mount();
 		await h.render(<PlanReviewPanel session={session()} onChanged={() => {}} />);
@@ -185,7 +196,7 @@ describe("plan review panel", () => {
 		expect(body).toContain("Add retry");
 		expect(body).toContain("/tmp/plans/add-retry.md");
 		expect(body).toContain("Edits made inside the terminal review are not shown here.");
-		const plan = h.container.querySelector(".plan-text");
+		const plan = h.container.querySelector(".plan-md");
 		expect(plan?.textContent).toContain("<b>not html</b>");
 		expect(plan?.querySelector("b")).toBeNull();
 		expect(all(h.container, ".plan-actions button").map(b => b.textContent)).toEqual(OPTIONS.map(o => o.label));
@@ -193,8 +204,7 @@ describe("plan review panel", () => {
 
 	it("disables the unavailable keep option and Refine until feedback is typed", async () => {
 		mockHub({
-			review: () =>
-				json(review({ options: OPTIONS.map(o => (o.id === "keep" ? { ...o, disabled: true } : o)) })),
+			review: () => json(review({ options: OPTIONS.map(o => (o.id === "keep" ? { ...o, disabled: true } : o)) })),
 		});
 		const h = mount();
 		await h.render(<PlanReviewPanel session={session()} onChanged={() => {}} />);
@@ -337,7 +347,10 @@ describe("plan review panel", () => {
 	it("drops an open confirmation when the review is replaced, and never answers the new review", async () => {
 		const pending: ((r: Response) => void)[] = [];
 		const calls = mockHub({
-			review: () => (pending.length === 0 ? (pending.push(() => {}), json(review())) : new Promise<Response>(r => pending.push(r))),
+			review: () =>
+				pending.length === 0
+					? (pending.push(() => {}), json(review()))
+					: new Promise<Response>(r => pending.push(r)),
 		});
 		const h = mount();
 		await h.render(<PlanReviewPanel session={session()} onChanged={() => {}} />);
@@ -431,35 +444,42 @@ describe("Sessions page with a plan review", () => {
 		return h;
 	}
 
-	it("lists it under Needs you with the badge, and offers the restart hint for old sessions", async () => {
+	it("pins it, opens its drawer on the plan tab, and offers the restart hint for old sessions", async () => {
 		const sessions = [
 			session(),
 			session({ instanceId: "inst-2", sessionId: "sess-2", sessionName: "Old one", planControl: "restart_needed" }),
 			{ instanceId: "inst-3", sessionId: "sess-3", sessionName: "Quiet", busy: false },
-			{ instanceId: "inst-4", sessionId: "sess-4", sessionName: "Old idle", busy: false, planReview: null, planControl: "restart_needed" as const },
+			{
+				instanceId: "inst-4",
+				sessionId: "sess-4",
+				sessionName: "Old idle",
+				busy: false,
+				planReview: null,
+				planControl: "restart_needed" as const,
+			},
 		];
 		mockHub({ sessions: () => json({ sessions, now: Date.now() }) });
 		const h = withMedia(mount());
 		await h.render(<SessionsRoute active selected={null} onSelect={() => {}} />);
 		await settle();
-		const needs = h.container.querySelector(".sess-group[data-needs=true]");
-		expect(needs?.textContent).toContain("Needs you · 2");
-		expect(needs?.textContent).toContain("Plan to approve");
-		expect(needs?.textContent).not.toContain("Quiet");
-		expect(h.container.textContent).not.toContain("waiting (age unknown)");
+		const pinned = all(h.container, "tbody tr[data-pinned=true]").map(r => text(r));
+		expect(pinned).toHaveLength(2);
+		expect(pinned.join(" ")).toContain("plan to approve");
+		expect(pinned.join(" ")).not.toContain("Quiet");
 
 		await h.render(<SessionsRoute active selected="sess-2" onSelect={() => {}} />);
 		await settle();
-		expect(text(h.container)).toContain(RESTART_FOR_PLAN);
-		expect(h.container.querySelector(".plan-review")).toBeNull();
+		expect(text(h.body)).toContain(RESTART_FOR_PLAN);
+		expect(h.body.querySelector(".plan-review")).toBeNull();
 
 		// the hub sends restart_needed with no review open: the hint still shows
 		await h.render(<SessionsRoute active selected="sess-4" onSelect={() => {}} />);
 		await settle();
-		expect(text(h.container)).toContain(RESTART_FOR_PLAN);
+		expect(text(h.body)).toContain(RESTART_FOR_PLAN);
 
 		await h.render(<SessionsRoute active selected="sess-1" onSelect={() => {}} />);
 		await settle();
-		expect(h.container.querySelector(".plan-review")).not.toBeNull();
+		expect(byText(h.body, "[role=tab]", "Plan to approve")?.getAttribute("aria-selected")).toBe("true");
+		expect(h.body.querySelector(".plan-review")).not.toBeNull();
 	});
 });

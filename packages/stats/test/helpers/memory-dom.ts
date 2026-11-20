@@ -19,7 +19,8 @@ export interface Harness {
 	render: (node: ReactNode) => Promise<void>;
 }
 
-let active: Root | null = null;
+/** Every root mounted since the last unmount, so a test that mounts twice leaves no listener behind. */
+const active: Root[] = [];
 
 export function mount(): Harness {
 	const domWindow = parseHTML('<html><body><div id="root"></div></body></html>').window;
@@ -58,7 +59,7 @@ export function mount(): Harness {
 	supportSelects(domWindow.document);
 	const container = domWindow.document.getElementById("root") as unknown as Element;
 	const root = createRoot(container);
-	active = root;
+	active.push(root);
 	return {
 		root,
 		container,
@@ -85,11 +86,10 @@ function supportSelects(doc: { createElement: (tag: string) => unknown }): void 
 }
 
 export async function unmount(): Promise<void> {
-	const root = active;
-	active = null;
-	if (root) {
+	const roots = active.splice(0);
+	if (roots.length) {
 		await act(async () => {
-			root.unmount();
+			for (const root of roots) root.unmount();
 		});
 	}
 	vi.restoreAllMocks();

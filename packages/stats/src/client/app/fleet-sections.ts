@@ -1,0 +1,25 @@
+import type { DashboardSection } from "./nav";
+
+export const ALL_MODE_SECTIONS: ReadonlySet<DashboardSection> = new Set<DashboardSection>([
+	"overview",
+	"models",
+	"accounts",
+	"costs",
+	"tools",
+	"projects",
+	"gain",
+	"requests",
+	"errors",
+	"live",
+	"frustration",
+	"traces",
+	"spotlight",
+	"relay",
+	"jobs",
+	"flow",
+	"devices",
+	"alerts",
+	"machines",
+	"sessions",
+	"history",
+]);

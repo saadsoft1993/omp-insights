@@ -4,6 +4,7 @@ import {
 	getSessionInfo,
 	type HubSession,
 	type HubSessionInfo,
+	type ModeStatus,
 	sendSessionCommand,
 	stopHubSession,
 	type SessionCommand,
@@ -14,6 +15,7 @@ import {
 	COMPACT_TIMEOUT_TEXT,
 	COMPACT_POLL_MS,
 	COMPACTING_TEXT,
+	advisorSummary,
 	commandConfirm,
 	commandDone,
 	commandErrorMessage,
@@ -31,7 +33,7 @@ import {
 	parseSessionInfo,
 	RESTART_FOR_COMMANDS,
 } from "../data/session-commands";
-import { Badge, Card, Modal } from "../ui";
+import { Card, Modal, StatusCell } from "../ui";
 import { type Notice, NoticeLine } from "./hub-common";
 
 /** A model or thinking select has focus: the user may be choosing, so a background read must not move it. */
@@ -59,6 +61,9 @@ export function SessionCommandsPanel({
 	refreshMs = INFO_REFRESH_MS,
 	refreshToken = 0,
 	active = true,
+	onInfo,
+	goalHint = null,
+	lockedReason = null,
 }: {
 	session: HubSession;
 	onChanged: () => void;
@@ -72,8 +77,15 @@ export function SessionCommandsPanel({
 	refreshToken?: number;
 	/** False while the Sessions page is not the one on show (routes stay mounted): no background reads. */
 	active?: boolean;
+	/** Hears every settings read (null: none yet, or the session's plugin can't report them). */
+	onInfo?: (info: HubSessionInfo | null) => void;
+	/** Shown when a goal runs but its objective isn't reported (an older hub or plugin). */
+	goalHint?: string | null;
+	/** Why every control is off (the machine is unreachable), or null. */
+	lockedReason?: string | null;
 }) {
 	const sessionId = session.sessionId ?? "";
+	const machine = session.machine;
 	// The settings are bound to the session they were read for, so another session never shows them.
 	const [infoState, setInfoState] = useState<{ id: string; info: HubSessionInfo } | null>(null);
 	const info = infoState?.id === sessionId ? infoState.info : null;
@@ -120,7 +132,7 @@ export function SessionCommandsPanel({
 			const current = inflight.current;
 			if (!current || current.id !== sessionId) {
 				const startedAt = barrier.current;
-				const promise: Promise<unknown> = getSessionInfo(sessionId).finally(() => {
+				const promise: Promise<unknown> = getSessionInfo(sessionId, undefined, machine).finally(() => {
 					if (inflight.current?.promise === promise) inflight.current = null;
 				});
 				inflight.current = { id: sessionId, promise, barrier: startedAt };
@@ -142,7 +154,7 @@ export function SessionCommandsPanel({
 			queued.current = entry;
 			return entry.promise;
 		},
-		[sessionId],
+		[sessionId, machine],
 	);
 
 	/** The confirmation open now, mirrored for background reads. */
@@ -185,7 +197,7 @@ export function SessionCommandsPanel({
 				}
 			}
 		},
-		[sessionId, setPhase, readInfo],
+		[sessionId, machine, setPhase, readInfo],
 	);
 
 	useEffect(() => {
@@ -206,9 +218,15 @@ export function SessionCommandsPanel({
 		return () => {
 			seq.current++;
 		};
-	}, [sessionId, load]);
+	}, [sessionId, machine, load]);
 
 	confirmingRef.current = confirming;
+
+	const onInfoRef = useRef(onInfo);
+	onInfoRef.current = onInfo;
+	useEffect(() => {
+		onInfoRef.current?.(info);
+	}, [info]);
 	const ask = (command: SessionCommand, resume = false) => setConfirming({ command, sessionId, resume });
 
 	// While the card is on screen (page shown, tab visible), re-read what the session reports: it can change from
@@ -249,7 +267,7 @@ export function SessionCommandsPanel({
 		setOfferStop(false);
 		if (command.op === "compact") setPhase("submitting");
 		try {
-			const done = await sendSessionCommand(sessionId, command);
+			const done = await sendSessionCommand(sessionId, command, machine);
 			if (mine !== epoch.current) return;
 			// From here on only a read that starts after this point can say what the command did.
 			barrier.current++;
@@ -325,14 +343,14 @@ export function SessionCommandsPanel({
 			stopped = true;
 			clearInterval(timer);
 		};
-	}, [phase, sessionId, compactPollMs, maxPolls, load, onChanged, setPhase, readInfo]);
+	}, [phase, sessionId, machine, compactPollMs, maxPolls, load, onChanged, setPhase, readInfo]);
 
 	const stopTurn = async () => {
 		if (stopping) return;
 		const mine = epoch.current;
 		setStopping(true);
 		try {
-			await stopHubSession(sessionId);
+			await stopHubSession(sessionId, machine);
 			if (mine !== epoch.current) return;
 			setOfferStop(false);
 			setNotice({ tone: "ok", text: "Stop signal sent. Compact again once the turn has ended." });
@@ -344,7 +362,7 @@ export function SessionCommandsPanel({
 		}
 	};
 
-	const locked = busy || phase !== "idle";
+	const locked = busy || phase !== "idle" || lockedReason !== null;
 	const modeStatus = info?.modeStatus ?? { plan: "inactive", vibe: "inactive", goal: "inactive", loop: "inactive" };
 	const confirmText = confirming ? commandConfirm(confirming.command, { resume: confirming.resume }) : null;
 	const id = session.instanceId;
@@ -352,7 +370,11 @@ export function SessionCommandsPanel({
 	const objectiveError = objectiveProblem(objective);
 
 	return (
-		<Card title="Session" description="Model, thinking level, mode and compaction" className="sess-panel">
+		<Card
+			title="Session controls"
+			description="Goal, loop and plan mode, model, thinking level and compaction"
+			className="session-detail-panel"
+		>
 			{restart && <p className="hub-warn">{RESTART_FOR_COMMANDS}</p>}
 			{loadError && (
 				<div className="plan-load-error">
@@ -423,114 +445,209 @@ export function SessionCommandsPanel({
 							</select>
 						)}
 					</div>
-					<div className="hub-session-meta">
-						<span className="micro">Modes:</span>
-						<Badge tone={modeStatus.plan === "inactive" ? "neutral" : "accent"}>
-							Plan {modeStatus.plan === "inactive" ? "off" : modeStatus.plan === "paused" ? "paused" : "on"}
-						</Badge>
-						<Badge tone={modeStatus.goal === "inactive" ? "neutral" : "accent"}>
-							Goal {modeStatus.goal === "inactive" ? "off" : modeStatus.goal}
-						</Badge>
-						<Badge tone={modeStatus.loop === "inactive" ? "neutral" : "accent"}>
-							Loop {modeStatus.loop === "inactive" ? "off" : modeStatus.loop}
-						</Badge>
-					</div>
-					<div className="hub-actions">
-						<button
-							type="button"
-							className="btn"
-							disabled={locked}
-							onClick={() =>
-								ask(
-									modeCommand("plan", modeStatus.plan === "active" ? "exit" : "enter"),
-									modeStatus.plan === "paused",
-								)
-							}
-						>
-							{modeStatus.plan === "active"
-								? "Exit plan mode"
-								: modeStatus.plan === "paused"
-									? "Resume plan mode"
-									: "Enter plan mode"}
-						</button>
-						{modeStatus.plan === "paused" && (
-							<button
-								type="button"
-								className="btn"
-								disabled={locked}
-								onClick={() => ask(modeCommand("plan", "exit"))}
-							>
-								Exit plan mode
-							</button>
-						)}
-						{modeStatus.loop === "active" && (
-							<button
-								type="button"
-								className="btn"
-								disabled={locked}
-								onClick={() => ask(modeCommand("loop", "exit"))}
-							>
-								Exit loop
-							</button>
-						)}
-						{modeStatus.goal === "active" && (
-							<button
-								type="button"
-								className="btn"
-								disabled={locked}
-								onClick={() => ask(modeCommand("goal", "pause"))}
-							>
-								Pause goal
-							</button>
-						)}
-						{modeStatus.goal === "paused" && (
-							<button
-								type="button"
-								className="btn"
-								disabled={locked}
-								onClick={() => ask(modeCommand("goal", "resume"))}
-							>
-								Resume goal
-							</button>
-						)}
-						{modeStatus.goal !== "inactive" && (
-							<button
-								type="button"
-								className="btn"
-								disabled={locked}
-								onClick={() => ask(modeCommand("goal", "drop"))}
-							>
-								Drop goal
-							</button>
+					<div className="plan-field">
+						<label className="micro" htmlFor={`cmd-advisor-model-${id}`}>
+							Advisor
+						</label>
+						{!info.advisor ? (
+							<p className="micro">
+								Advisor control needs the updated omp, session plugin and hub; restart this session after
+								updating.
+							</p>
+						) : (
+							<>
+								<p className="micro">{advisorSummary(info.advisor)}</p>
+								<button
+									type="button"
+									className="btn"
+									disabled={locked}
+									onClick={() => ask({ op: "set-advisor", args: { enabled: !info.advisor!.enabled } })}
+								>
+									{info.advisor.enabled ? "Turn advisor off" : "Turn advisor on"}
+								</button>
+								<select
+									id={`cmd-advisor-model-${id}`}
+									className="input"
+									value={
+										info.advisor.model &&
+										info.models.some(m => modelKey(m) === modelKey(info.advisor!.model!))
+											? modelKey(info.advisor.model)
+											: ""
+									}
+									disabled={locked || !info.advisor.enabled}
+									onChange={event => {
+										const picked = info.models.find(m => modelKey(m) === event.target.value);
+										if (picked)
+											ask({ op: "set-advisor", args: { provider: picked.provider, id: picked.id } });
+									}}
+								>
+									{(!info.advisor.model ||
+										!info.models.some(m => modelKey(m) === modelKey(info.advisor!.model!))) && (
+										<option value="">{info.advisor.model ? modelKey(info.advisor.model) : "Unknown"}</option>
+									)}
+									{info.models.map(m => (
+										<option key={modelKey(m)} value={modelKey(m)}>
+											{modelLabel(m)}
+										</option>
+									))}
+								</select>
+								<p className="micro">Not saved to config; resets when omp restarts.</p>
+							</>
 						)}
 					</div>
-					{modeStatus.goal === "inactive" && (
-						<div className="plan-field">
-							<label className="micro" htmlFor={`cmd-goal-${id}`}>
-								Goal objective (up to {MAX_OBJECTIVE_CHARS} characters)
-							</label>
-							<textarea
-								id={`cmd-goal-${id}`}
-								className="input"
-								rows={2}
-								value={objective}
-								disabled={locked}
-								onChange={event => setObjective(event.target.value)}
-							/>
-							{objective !== "" && objectiveError && <p className="micro hub-reason">{objectiveError}</p>}
+					<div className="sd-modes" role="group" aria-label="Goal, loop and plan mode">
+						<div className="sd-mode">
+							<b>
+								Goal <ModePill status={modeStatus.goal} />
+							</b>
+							{modeStatus.goal === "inactive" ? (
+								<>
+									<label className="micro" htmlFor={`cmd-goal-${id}`}>
+										Goal objective (up to {MAX_OBJECTIVE_CHARS} characters)
+									</label>
+									<textarea
+										id={`cmd-goal-${id}`}
+										className="input"
+										rows={2}
+										placeholder="What should the session keep working towards?"
+										value={objective}
+										disabled={locked}
+										onChange={event => setObjective(event.target.value)}
+									/>
+									{objective !== "" && objectiveError && <p className="micro hub-reason">{objectiveError}</p>}
+									<div className="hub-actions">
+										<button
+											type="button"
+											className="btn"
+											data-size="sm"
+											disabled={locked || objectiveError !== null}
+											title={lockedReason ?? objectiveError ?? undefined}
+											onClick={() => ask(modeCommand("goal", "enter", objective))}
+										>
+											Enter goal
+										</button>
+									</div>
+								</>
+							) : (
+								<>
+									{info.goal ? (
+										<p className="sd-goal">{info.goal.objective}</p>
+									) : (
+										<p className="sd-hint">{goalHint ?? "The session did not report the objective."}</p>
+									)}
+									{info.goal?.tokenBudget !== undefined && (
+										<p className="sd-hint">Token budget {info.goal.tokenBudget.toLocaleString("en-US")}</p>
+									)}
+									<div className="hub-actions">
+										{modeStatus.goal === "active" ? (
+											<button
+												type="button"
+												className="btn"
+												data-size="sm"
+												disabled={locked}
+												title={lockedReason ?? undefined}
+												onClick={() => ask(modeCommand("goal", "pause"))}
+											>
+												Pause goal
+											</button>
+										) : (
+											<button
+												type="button"
+												className="btn"
+												data-size="sm"
+												disabled={locked}
+												title={lockedReason ?? undefined}
+												onClick={() => ask(modeCommand("goal", "resume"))}
+											>
+												Resume goal
+											</button>
+										)}
+										<button
+											type="button"
+											className="btn"
+											data-size="sm"
+											data-variant="danger"
+											disabled={locked}
+											title={lockedReason ?? undefined}
+											onClick={() => ask(modeCommand("goal", "drop"))}
+										>
+											Drop goal
+										</button>
+									</div>
+								</>
+							)}
+						</div>
+						<div className="sd-mode">
+							<b>
+								Loop <ModePill status={modeStatus.loop} />
+							</b>
+							{modeStatus.loop === "active" ? (
+								<>
+									<p>Repeats the last prompt after each turn until you end it.</p>
+									<div className="hub-actions">
+										<button
+											type="button"
+											className="btn"
+											data-size="sm"
+											disabled={locked}
+											title={lockedReason ?? undefined}
+											onClick={() => ask(modeCommand("loop", "exit"))}
+										>
+											Exit loop
+										</button>
+									</div>
+								</>
+							) : (
+								<p>
+									{modeStatus.loop === "paused" ? "Paused." : "Off."} A loop starts inside the session (
+									<span className="mono">/loop</span>); from here you can end one.
+								</p>
+							)}
+						</div>
+						<div className="sd-mode">
+							<b>
+								Plan mode <ModePill status={modeStatus.plan} />
+							</b>
+							<p>
+								{modeStatus.plan === "active"
+									? "The session plans before it changes anything."
+									: "The session works directly."}
+							</p>
 							<div className="hub-actions">
 								<button
 									type="button"
 									className="btn"
-									disabled={locked || objectiveError !== null}
-									title={objectiveError ?? undefined}
-									onClick={() => ask(modeCommand("goal", "enter", objective))}
+									data-size="sm"
+									disabled={locked}
+									title={lockedReason ?? undefined}
+									onClick={() =>
+										ask(
+											modeCommand("plan", modeStatus.plan === "active" ? "exit" : "enter"),
+											modeStatus.plan === "paused",
+										)
+									}
 								>
-									Enter goal
+									{modeStatus.plan === "active"
+										? "Exit plan mode"
+										: modeStatus.plan === "paused"
+											? "Resume plan mode"
+											: "Enter plan mode"}
 								</button>
+								{modeStatus.plan === "paused" && (
+									<button
+										type="button"
+										className="btn"
+										data-size="sm"
+										disabled={locked}
+										title={lockedReason ?? undefined}
+										onClick={() => ask(modeCommand("plan", "exit"))}
+									>
+										Exit plan mode
+									</button>
+								)}
 							</div>
 						</div>
-					)}
+					</div>
 					<div className="plan-field">
 						<label className="micro" htmlFor={`cmd-compact-${id}`}>
 							Compact instructions (optional, up to {MAX_INSTRUCTIONS_CHARS} characters)
@@ -590,5 +707,17 @@ export function SessionCommandsPanel({
 				<p>{confirmText?.question}</p>
 			</Modal>
 		</Card>
+	);
+}
+
+function ModePill({ status }: { status: ModeStatus }) {
+	return status === "active" ? (
+		<StatusCell tone="ok" live>
+			On
+		</StatusCell>
+	) : status === "paused" ? (
+		<StatusCell tone="warn">Paused</StatusCell>
+	) : (
+		<StatusCell>Off</StatusCell>
 	);
 }

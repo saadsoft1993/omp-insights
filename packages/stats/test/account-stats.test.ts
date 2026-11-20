@@ -15,7 +15,7 @@ import {
 	getProviderDashboardStats,
 	syncAllSessions,
 } from "@oh-my-pi/omp-stats/aggregator";
-import { closeDb, getMessageCount, getRecentRequests, initDb, insertMessageStats } from "@oh-my-pi/omp-stats/db";
+import { closeDb, getRecentRequests, initDb, insertMessageStats } from "@oh-my-pi/omp-stats/db";
 import { parseSessionFile } from "@oh-my-pi/omp-stats/parser";
 import type { CredentialAggregate } from "@oh-my-pi/omp-stats/rollup";
 import { getAgentDbPath, getSessionsDir, getStatsDbPath } from "@oh-my-pi/pi-utils";
@@ -34,7 +34,7 @@ function oauth(id: number, identityKey: string, disabledCause: string | null = n
 	return { id, provider: "anthropic", credentialType: "oauth", disabledCause, identityKey, updatedAt: id };
 }
 
-const TEAM = "anthropic/email:team@example.com|org:org-1";
+const WORK = "anthropic/email:team@example.com|org:org-1";
 const PERSONAL = "anthropic/email:me@example.com|org:org-3";
 const ROUTING_CREDENTIALS = [
 	oauth(1, "email:team@example.com|org:org-1"),
@@ -203,8 +203,7 @@ describe("credential attribution at ingest", () => {
 
 		const result = await parseSessionFile(file);
 		await initDb();
-		insertMessageStats(result.stats);
-		expect(getMessageCount()).toBe(3);
+		expect(insertMessageStats(result.stats)).toBe(3);
 
 		const byEntry = new Map(getRecentRequests(10).map(row => [row.entryId, row.credentialId]));
 		expect(byEntry.get("turn-1")).toBe(7);
@@ -364,6 +363,14 @@ describe("buildAccountStats", () => {
 						updatedAt: 1,
 					},
 					{
+						id: 5,
+						provider: "anthropic",
+						credentialType: "oauth",
+						disabledCause: "expired",
+						identityKey: "email:c@example.com",
+						updatedAt: 0,
+					},
+					{
 						id: 4,
 						provider: "openai-codex",
 						credentialType: "oauth",
@@ -408,7 +415,7 @@ describe("buildAccountStats", () => {
 		});
 		const status = new Map(stats.accounts.map(a => [a.label, a.status]));
 		expect(status.get("a@example.com")).toBe("blocked");
-		expect(status.get("b@example.com")).toBe("needs_login");
+		expect(status.get("b@example.com")).toBe("removed");
 		expect(status.get("c@example.com")).toBe("needs_login");
 		expect(status.get("d@example.com")).toBe("never");
 		expect(stats.accounts.find(a => a.label === "a@example.com")?.blocks).toEqual([
@@ -441,7 +448,7 @@ describe("account routing", () => {
 		expect(routing.recent.requests).toBe(100);
 		expect(routing.recent.accounts).toEqual([
 			{ accountKey: PERSONAL, requests: 85, share: 0.85 },
-			{ accountKey: TEAM, requests: 15, share: 0.15 },
+			{ accountKey: WORK, requests: 15, share: 0.15 },
 		]);
 		const personal = stats.accounts.find(a => a.key === PERSONAL);
 		expect(personal).toMatchObject({
@@ -480,12 +487,12 @@ describe("account routing", () => {
 		});
 		expect(wide.routing[0].lastAssignmentChange).toEqual({
 			fromAccountKey: PERSONAL,
-			toAccountKey: TEAM,
+			toAccountKey: WORK,
 			at: now - 2 * HOUR,
 		});
 		expect(wide.routing[0].newSessions).toMatchObject({
 			sessions: 1,
-			lastAccount: TEAM,
+			lastAccount: WORK,
 			lastAccountSince: now - 2 * HOUR,
 		});
 
@@ -529,7 +536,7 @@ describe("account routing", () => {
 		expect(day.routing).toHaveLength(1);
 		const [routing] = day.routing;
 		expect(routing.recent.accounts.map(a => [a.accountKey, a.requests])).toEqual([
-			[TEAM, 2],
+			[WORK, 2],
 			[PERSONAL, 1],
 		]);
 		expect(routing.newSessions).toMatchObject({
@@ -539,13 +546,13 @@ describe("account routing", () => {
 			lastAccountSince: now - 40 * MINUTE,
 		});
 		expect(routing.lastAssignmentChange).toEqual({
-			fromAccountKey: TEAM,
+			fromAccountKey: WORK,
 			toAccountKey: PERSONAL,
 			at: now - 40 * MINUTE,
 		});
 		const byKey = new Map(day.accounts.map(a => [a.key, a]));
 		expect(byKey.get(PERSONAL)).toMatchObject({ servedLatestNewSession: true, servingNow: true });
-		expect(byKey.get(TEAM)).toMatchObject({ servedLatestNewSession: false, servingNow: true });
+		expect(byKey.get(WORK)).toMatchObject({ servedLatestNewSession: false, servingNow: true });
 
 		// Over the last hour the older session's start is out of range, so no assignment change is observed.
 		expect((await getAccountDashboardStats("1h")).routing[0].lastAssignmentChange).toBeNull();
@@ -659,13 +666,13 @@ describe("account flow", () => {
 		expect(flow.series.map(s => [s.key, s.label, s.accountKey]).sort()).toEqual(
 			[
 				[PERSONAL, "me@example.com", PERSONAL],
-				[TEAM, "team@example.com", TEAM],
+				[WORK, "team@example.com", WORK],
 				["anthropic/unattributed", "Unattributed", null],
 			].sort(),
 		);
 		expect(flow.points).toEqual([
 			{ timestamp: bucket, key: PERSONAL, requests: 721, tokens: 7210 },
-			{ timestamp: bucket, key: TEAM, requests: 131, tokens: 1310 },
+			{ timestamp: bucket, key: WORK, requests: 131, tokens: 1310 },
 			{ timestamp: bucket, key: "anthropic/unattributed", requests: 40, tokens: 400 },
 			{ timestamp: bucket + HOUR, key: PERSONAL, requests: 7, tokens: 70 },
 		]);

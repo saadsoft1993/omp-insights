@@ -1,3 +1,4 @@
+import { concreteMachine, useFleet } from "../app/machine";
 /**
  * Single-session trace viewer: summary strip, axis-mode toolbar, minimap,
  * flamegraph canvas, transcript list, tool aggregates, and the span drawer.
@@ -6,9 +7,10 @@
 
 import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getSessionTrace } from "../api";
+import { getSessionEntryDetail, getSessionTrace, getSessionTraceTrack } from "../api";
+import { namedStatsReason, statsFailureSentence } from "../app/stats-reasons";
 import { useQuery } from "../data/query";
-import type { SessionTrace, TraceSpan, TraceSpanKind, TraceTrack } from "../types";
+import type { SessionTrace, SessionTraceTrackResponse, TraceSpan, TraceSpanKind, TraceTrack } from "../types";
 import { Card, ChartSkeleton, PageHeader, QueryView, SearchInput, Segmented } from "../ui";
 import { AggregatesPanel } from "./AggregatesPanel";
 import { Minimap } from "./Minimap";
@@ -21,6 +23,7 @@ import { type AxisMode, buildScale } from "./time-scale";
 
 export interface TraceViewProps {
 	file: string;
+	machine?: string;
 	active: boolean;
 	onBack: () => void;
 }
@@ -39,14 +42,203 @@ const LEGEND: Array<{ kind: TraceSpanKind; label: string }> = [
 	{ kind: "background", label: "Background" },
 ];
 
-export function TraceView({ file, active, onBack }: TraceViewProps) {
+interface LazyTracks {
+	key: string;
+	requested: ReadonlySet<string>;
+	loaded: ReadonlyMap<string, TraceTrack>;
+	failed: ReadonlySet<string>;
+	/** The raw reason each failed track gave, for its plain wording and Details tooltip. */
+	reasons: ReadonlyMap<string, string>;
+	/** Loaded tracks whose latest refresh failed: the last good spans stay, marked, with the raw reason. */
+	stale: ReadonlyMap<string, string>;
+	/** Try again presses per loaded track; each one refetches that track. */
+	retries: ReadonlyMap<string, number>;
+}
+
+const EMPTY_LAZY: LazyTracks = {
+	key: "",
+	requested: new Set(),
+	loaded: new Map(),
+	failed: new Set(),
+	reasons: new Map(),
+	stale: new Map(),
+	retries: new Map(),
+};
+
+function TrackSpansLoader({
+	file,
+	trackId,
+	machine,
+	active,
+	parent,
+	parentUpdatedAt,
+	retry,
+	onLoaded,
+	onFailed,
+}: {
+	file: string;
+	trackId: string;
+	machine: string | undefined;
+	active: boolean;
+	parent: SessionTrace | null;
+	/** When the parent trace last answered (a 304 included): a failed refresh is asked again then. */
+	parentUpdatedAt: number | null;
+	/** Bumped by Try again on a loaded track whose refresh failed. */
+	retry: number;
+	onLoaded: (id: string, track: TraceTrack) => void;
+	/** `stale`: the track had loaded before, so its last good spans stay on screen. */
+	onFailed: (id: string, reason: string, stale: boolean) => void;
+}): null {
+	const query = useQuery<SessionTraceTrackResponse>(
+		["trace-track", file, trackId, machine],
+		({ signal }, previous) => getSessionTraceTrack(file, trackId, signal, previous, machine),
+		{ enabled: active, retain: false },
+	);
+	// Reported on every answer, so a recovery after a failed refresh (even an unchanged 304) clears the mark.
+	useEffect(() => {
+		if (query.data && !query.error) onLoaded(trackId, query.data.track);
+	}, [query.data, query.error, onLoaded, trackId]);
+	// A refresh failing after a good load is reported too: the old spans stay, marked as not refreshed.
+	useEffect(() => {
+		if (query.error) onFailed(trackId, query.error.message, !!query.data);
+	}, [query.error, query.data, onFailed, trackId]);
+	const lastParent = useRef(parent);
+	useEffect(() => {
+		if (lastParent.current !== parent) {
+			lastParent.current = parent;
+			query.refetch();
+		}
+	}, [parent, query.refetch]);
+	// The parent's refresh (a 304 too) asks a failed track again, so it never stays stale for good.
+	const lastParentAnswer = useRef(parentUpdatedAt);
+	const failing = !!query.error;
+	useEffect(() => {
+		if (lastParentAnswer.current === parentUpdatedAt) return;
+		lastParentAnswer.current = parentUpdatedAt;
+		if (failing) query.refetch();
+	}, [parentUpdatedAt, failing, query.refetch]);
+	const lastRetry = useRef(retry);
+	useEffect(() => {
+		if (lastRetry.current === retry) return;
+		lastRetry.current = retry;
+		query.refetch();
+	}, [retry, query.refetch]);
+	return null;
+}
+
+export function TraceView({ file, machine, active, onBack }: TraceViewProps) {
+	const traceMachine = machine ?? concreteMachine();
+	const stateKey = `${file}\n${traceMachine}`;
+	const [lazy, setLazy] = useState<LazyTracks>(EMPTY_LAZY);
+	const current = lazy.key === stateKey ? lazy : EMPTY_LAZY;
+	const requestTrack = useCallback(
+		(id: string) => {
+			setLazy(previous => {
+				const base = previous.key === stateKey ? previous : EMPTY_LAZY;
+				const requested = new Set(base.requested);
+				const failed = new Set(base.failed);
+				requested.add(id);
+				failed.delete(id);
+				return { ...base, key: stateKey, requested, failed };
+			});
+		},
+		[stateKey],
+	);
+	const onLoaded = useCallback(
+		(id: string, track: TraceTrack) => {
+			setLazy(previous => {
+				const base = previous.key === stateKey ? previous : EMPTY_LAZY;
+				if (base.loaded.get(id) === track && !base.stale.has(id)) return previous;
+				const loaded = new Map(base.loaded);
+				loaded.set(id, track);
+				const stale = new Map(base.stale);
+				stale.delete(id);
+				return { ...base, key: stateKey, loaded, stale };
+			});
+		},
+		[stateKey],
+	);
+	const onFailed = useCallback(
+		(id: string, reason: string, hadSpans: boolean) => {
+			setLazy(previous => {
+				const base = previous.key === stateKey ? previous : EMPTY_LAZY;
+				if (hadSpans) {
+					// Keep the loader (and its last good spans); mark the track as not refreshed.
+					if (base.stale.get(id) === reason) return previous;
+					const stale = new Map(base.stale);
+					stale.set(id, reason);
+					return { ...base, key: stateKey, stale };
+				}
+				const requested = new Set(base.requested);
+				const failed = new Set(base.failed);
+				const reasons = new Map(base.reasons);
+				requested.delete(id);
+				failed.add(id);
+				reasons.set(id, reason);
+				return { ...base, key: stateKey, requested, failed, reasons };
+			});
+		},
+		[stateKey],
+	);
+	// Try again on a loaded track whose refresh failed: ask that track again.
+	const retryTrack = useCallback(
+		(id: string) => {
+			setLazy(previous => {
+				const base = previous.key === stateKey ? previous : EMPTY_LAZY;
+				const retries = new Map(base.retries);
+				retries.set(id, (retries.get(id) ?? 0) + 1);
+				return { ...base, key: stateKey, retries };
+			});
+		},
+		[stateKey],
+	);
+	const loadEntry = useCallback<TraceEntryLoader>(
+		(entryFile, entryId, signal) => getSessionEntryDetail(entryFile, entryId, signal, traceMachine),
+		[traceMachine],
+	);
 	const query = useQuery<SessionTrace>(
-		["trace", file],
-		({ signal }, previous) => getSessionTrace(file, signal, previous),
+		["trace", file, traceMachine],
+		({ signal }, previous) => getSessionTrace(file, signal, previous, traceMachine),
 		{ pollMs: 15000, enabled: active },
 	);
 	// A previous session's trace must never render under this file's header.
 	const trace = query.stale ? null : query.data;
+	const mergedTrace = useMemo(
+		() =>
+			trace && {
+				...trace,
+				tracks: trace.tracks.map(t => (t.omittedSpans === undefined ? t : (current.loaded.get(t.id) ?? t))),
+			},
+		[trace, current.loaded],
+	);
+	const loadingTracks = useMemo(
+		() => new Set([...current.requested].filter(id => !current.loaded.has(id))),
+		[current.requested, current.loaded],
+	);
+	// Each failed track says why in plain words (no "retrying": a track loads only when asked), raw cause as Details.
+	const machineName = useMachineName(traceMachine);
+	const trackFailures = useMemo(
+		() =>
+			new Map(
+				[...current.failed].map(id => {
+					const raw = current.reasons.get(id) ?? null;
+					const plain = `Couldn't load these spans: ${namedStatsReason(machineName, raw)}.`;
+					return [id, raw ? `${plain} Details: ${raw}` : plain] as const;
+				}),
+			),
+		[current.failed, current.reasons, machineName],
+	);
+	// Loaded tracks whose refresh failed: the parent's next refresh asks them again, so say so.
+	const staleTracks = useMemo(
+		() =>
+			new Map(
+				[...current.stale].map(([id, raw]) => {
+					const plain = `Couldn't refresh these spans: ${namedStatsReason(machineName, raw)}. Showing the last loaded spans; they're asked again with the trace's next refresh.`;
+					return [id, `${plain} Details: ${raw}`] as const;
+				}),
+			),
+		[current.stale, machineName],
+	);
 
 	return (
 		<div className="stack traces-view">
@@ -73,8 +265,41 @@ export function TraceView({ file, active, onBack }: TraceViewProps) {
 					</button>
 				}
 			/>
-			<QueryView query={{ ...query, data: trace }} skeleton={<ChartSkeleton height={420} />}>
-				{loaded => <SessionTraceView trace={loaded} />}
+			{[...current.requested].map(id => (
+				<TrackSpansLoader
+					key={id}
+					file={file}
+					trackId={id}
+					machine={traceMachine}
+					active={active}
+					parent={trace}
+					parentUpdatedAt={query.updatedAt}
+					retry={current.retries.get(id) ?? 0}
+					onLoaded={onLoaded}
+					onFailed={onFailed}
+				/>
+			))}
+			<QueryView
+				query={{ ...query, data: mergedTrace }}
+				skeleton={<ChartSkeleton height={420} />}
+				errorMessage={reason =>
+					reason === "session not found"
+						? "This session's file is gone; it may have been moved or deleted."
+						: statsFailureSentence(null, reason, { refreshing: query.polling })
+				}
+			>
+				{loaded => (
+					<SessionTraceView
+						trace={loaded}
+						loadEntry={loadEntry}
+						onLoadTrack={requestTrack}
+						loadingTracks={loadingTracks}
+						failedTracks={current.failed}
+						trackFailures={trackFailures}
+						staleTracks={staleTracks}
+						onRetryTrack={retryTrack}
+					/>
+				)}
 			</QueryView>
 		</div>
 	);
@@ -88,6 +313,14 @@ export interface SessionTraceViewProps {
 	/** Embedded viewers keep details inside their own layout, without a modal. */
 	embedded?: boolean;
 	onNavigate?: (trackId: string, entryId: string) => void;
+	onLoadTrack?: (trackId: string) => void;
+	loadingTracks?: ReadonlySet<string>;
+	failedTracks?: ReadonlySet<string>;
+	/** Plain explanation (with the raw cause as Details) for each failed track, shown on its Try again button. */
+	trackFailures?: ReadonlyMap<string, string>;
+	/** Loaded tracks whose refresh failed, with their explanation; they get a "couldn't refresh" Try again. */
+	staleTracks?: ReadonlyMap<string, string>;
+	onRetryTrack?: (trackId: string) => void;
 }
 
 /** Data-driven viewer shared by the live route and self-contained HTML exports. */
@@ -97,6 +330,12 @@ export function SessionTraceView({
 	loadEntry,
 	embedded = false,
 	onNavigate,
+	onLoadTrack,
+	loadingTracks,
+	failedTracks,
+	trackFailures,
+	staleTracks,
+	onRetryTrack,
 }: SessionTraceViewProps) {
 	const [mode, setMode] = useState<AxisMode>("time");
 	const [compressIdle, setCompressIdle] = useState(true);
@@ -226,6 +465,7 @@ export function SessionTraceView({
 		return allSpans.find(({ span }) => span.id === selection) ?? null;
 	}, [selection, allSpans]);
 
+	const pendingRevealRef = useRef<string | null>(null);
 	const openChildTrack = useCallback(
 		(childTrackId: string) => {
 			const child = tracks.find(track => track.id === childTrackId);
@@ -240,10 +480,27 @@ export function SessionTraceView({
 				}
 				return next;
 			});
+			if (child?.omittedSpans !== undefined && onLoadTrack) {
+				pendingRevealRef.current = child.id;
+				onLoadTrack(child.id);
+				return;
+			}
 			if (first) selectAndReveal(first.id);
 		},
-		[tracks, selectAndReveal],
+		[tracks, selectAndReveal, onLoadTrack],
 	);
+
+	useEffect(() => {
+		const id = pendingRevealRef.current;
+		if (!id) return;
+		const track = tracks.find(t => t.id === id);
+		if (track && track.omittedSpans === undefined && track.spans[0]) {
+			selectAndReveal(track.spans[0].id);
+			pendingRevealRef.current = null;
+		} else if (track?.omittedSpans !== undefined && !loadingTracks?.has(id)) {
+			pendingRevealRef.current = null;
+		}
+	}, [tracks, loadingTracks, selectAndReveal]);
 
 	const collapseAll = useCallback(
 		(collapse: boolean) => {
@@ -361,6 +618,12 @@ export function SessionTraceView({
 								</>
 							)}
 						</div>
+						{search.trim() && tracks.some(t => t.omittedSpans !== undefined) && (
+							<p className="muted">
+								Search covers loaded tracks only; {tracks.filter(t => t.omittedSpans !== undefined).length}{" "}
+								subagent tracks are not loaded.
+							</p>
+						)}
 						<div className="traces-legend">
 							{LEGEND.map(item => (
 								<span key={item.kind} className="traces-legend-item">
@@ -382,6 +645,12 @@ export function SessionTraceView({
 						collapsed={collapsed}
 						onToggleCollapse={toggleCollapse}
 						traceStart={traceStart}
+						onLoadTrack={onLoadTrack}
+						loadingTracks={loadingTracks}
+						failedTracks={failedTracks}
+						trackFailures={trackFailures}
+						staleTracks={staleTracks}
+						onRetryTrack={onRetryTrack}
 						autoFocus={!embedded}
 					/>
 				</div>
@@ -412,4 +681,10 @@ export function SessionTraceView({
 			{view === "full" && <AggregatesPanel toolStats={trace.summary.toolStats} index={3} />}
 		</div>
 	);
+}
+
+/** The fleet name of the machine a trace comes from, or null without a fleet. */
+function useMachineName(id: string | undefined): string | null {
+	const fleet = useFleet();
+	return fleet?.find(machine => machine.id === id)?.name ?? null;
 }

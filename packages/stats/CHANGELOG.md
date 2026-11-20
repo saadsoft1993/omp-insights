@@ -11,6 +11,12 @@
 
 ### Changed
 
+- Reworked Accounts & quota around subscription cards, per-machine login states and quota readings. Add, reconnect and remove logins through the hub; removed logins are shown as not added rather than needing attention.
+- Fixed API-key and account-id-only logins on Accounts & quota: credentials without email stay manageable and API-key usage joins the login on its own machine.
+- Simplified the dashboard navigation. Usage now has five pages: Overview, Accounts & quota, Live, Models and Costs. Providers and Connections are folded into Accounts & quota. Old `#/providers` and `#/connections` links open Accounts & quota. Overview no longer shows the Accounts card or Latest requests; it links to them instead.
+- Relay, Alerts, Jobs, Devices, Model flow and Machines now sit in a collapsible Settings group.
+- Shortcut keys are now unique; Model flow moved to `G Q`.
+- Cost totals are labelled "API-equivalent cost", and figures that count only requests tied to an account are labelled "on accounts".
 - The session watcher now syncs a written transcript within 2 seconds even while sessions keep writing; before, every new write pushed the sync back.
 ## [19.0.1] - 2026-11-19
 
@@ -76,6 +82,7 @@
 ### Fixed
 
 - Fixed the trace dashboard returning HTTP 431 for sessions with many subagents.
+- The plan review on the Sessions page now fits the screen: the plan grows with the page instead of a small scrolling box, the reading-width limit applies only to text so code blocks and tables use the full panel, code blocks have a background and border, inline code has a background, headings are smaller with space above them, and on phones the plan drops its inner padding and wide tables scroll sideways without splitting words.
 
 ## [18.17.0] - 2026-11-06
 

@@ -1,3 +1,8 @@
+import { ALL_MACHINES, concreteMachine, machinePath, useSelectedMachine } from "../app/machine";
+import { MissingMachineNumbers } from "../app/MachineBanner";
+import { fleetQueryView, useFleetQuery } from "../data/fleet-query";
+import { useHubPresent } from "../data/hub-presence";
+import { mergeProjects } from "../data/fleet-merge";
 import { useDeferredValue, useMemo, useState } from "react";
 import { getFolderStats } from "../api";
 import { BarList } from "../charts";
@@ -43,7 +48,26 @@ const TABLE_LIMIT = 100;
 const TOP_LIMIT = 8;
 
 export function ProjectsRoute({ active, range }: ProjectsRouteProps) {
-	const folders = useQuery(["projects", range], ({ signal }) => getFolderStats(range, signal), { enabled: active });
+	const hubPresent = useHubPresent();
+	const allMachines = useSelectedMachine() === ALL_MACHINES;
+	const single = useQuery(["projects", range], ({ signal }) => getFolderStats(range, signal, concreteMachine()), {
+		enabled: active && !allMachines,
+	});
+	const fleet = useFleetQuery(
+		["projects", range],
+		async (machine, signal) => {
+			const [response, data] = await Promise.all([
+				fetch(machinePath("/api/hub/version", machine), { signal }),
+				getFolderStats(range, signal, machine),
+			]);
+			if (!response.ok) throw new Error(`Machine version: ${response.status}`);
+			const version = (await response.json()) as { home?: string | null };
+			return { machine, home: version.home ?? null, data };
+		},
+		mergeProjects,
+		{ enabled: active && allMachines && hubPresent },
+	);
+	const folders = allMachines ? fleetQueryView(single, fleet) : single;
 	const [search, setSearch] = useState("");
 	// Benchmarks and scratch sessions can leave tens of thousands of one-off temp folders; hide them by default.
 	const [hideTemporary, setHideTemporary] = useState(true);
@@ -76,6 +100,7 @@ export function ProjectsRoute({ active, range }: ProjectsRouteProps) {
 
 	return (
 		<div className="page">
+			{allMachines && <MissingMachineNumbers machines={fleet.machines} />}
 			<PageHeader title="Projects" description={`Usage by session folder in ${meta.windowLabel}.`} />
 
 			<QueryView query={folders} skeleton={<ChartSkeleton height={96} />}>
@@ -118,6 +143,7 @@ export function ProjectsRoute({ active, range }: ProjectsRouteProps) {
 			<div className="grid grid-2">
 				<Card index={1} title="Top by cost" description="Share of API-equivalent cost" stale={folders.stale}>
 					<QueryView
+						hideError
 						query={folders}
 						skeleton={<ChartSkeleton height={236} />}
 						isEmpty={() => top.cost.length === 0}
@@ -139,6 +165,7 @@ export function ProjectsRoute({ active, range }: ProjectsRouteProps) {
 				</Card>
 				<Card index={2} title="Top by requests" description="Share of all requests" stale={folders.stale}>
 					<QueryView
+						hideError
 						query={folders}
 						skeleton={<ChartSkeleton height={236} />}
 						isEmpty={() => top.requests.length === 0}
@@ -187,7 +214,7 @@ export function ProjectsRoute({ active, range }: ProjectsRouteProps) {
 				flush
 				stale={folders.stale}
 			>
-				<QueryView query={folders} skeleton={<TableSkeleton rows={10} />}>
+				<QueryView hideError query={folders} skeleton={<TableSkeleton rows={10} />}>
 					{() => (
 						<Table
 							rows={matching}

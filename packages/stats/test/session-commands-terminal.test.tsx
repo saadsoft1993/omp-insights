@@ -70,7 +70,7 @@ function session(over: Partial<HubSession> = {}): HubSession {
 	return {
 		instanceId: "inst-1",
 		sessionId: "sess-1",
-		cwd: "/Users/me/projects/sample-app",
+		cwd: "/Users/me/projects/app",
 		sessionName: "Work",
 		busy: false,
 		terminal: { available: true, waiting: null, unknown: false },
@@ -593,6 +593,38 @@ describe("session commands panel", () => {
 		await settle();
 	};
 
+	it("shows an off advisor and confirms turning it on", async () => {
+		const calls = mockHub({ info: () => json({ ...INFO, advisor: { enabled: false, active: false, model: null, advisors: [] } }) });
+		const h = mount();
+		await h.render(<SessionCommandsPanel session={session()} onChanged={() => {}} />);
+		await settle();
+		expect(text(h.container)).toContain("Off");
+		expect(isDisabled(h.container.querySelector("#cmd-advisor-model-inst-1"))).toBe(true);
+		await click(byText(h.container, "button", "Turn advisor on"));
+		expect(text(h.body.querySelector("[role=dialog]") as Element)).toContain("extra requests");
+		await confirmPrimary(h);
+		expect(urlEnds(calls, "/command").at(-1)?.body).toEqual({ op: "set-advisor", args: { enabled: true } });
+	});
+
+	it("confirms an advisor model change", async () => {
+		const calls = mockHub({ info: () => json({ ...INFO, advisor: { enabled: true, active: true, model: INFO.model, advisors: [{ name: "default", status: "quota_exhausted" }] } }) });
+		const h = mount();
+		await h.render(<SessionCommandsPanel session={session()} onChanged={() => {}} />);
+		await settle();
+		expect(text(h.container)).toContain("On · anthropic/claude-opus · default quota exhausted");
+		await type(h.container.querySelector("#cmd-advisor-model-inst-1"), "anthropic/claude-haiku");
+		await confirmPrimary(h);
+		expect(urlEnds(calls, "/command").at(-1)?.body).toEqual({ op: "set-advisor", args: { provider: "anthropic", id: "claude-haiku" } });
+	});
+
+	it("explains when advisor control is unavailable", async () => {
+		mockHub();
+		const h = mount();
+		await h.render(<SessionCommandsPanel session={session()} onChanged={() => {}} />);
+		await settle();
+		expect(text(h.container)).toContain("Advisor control needs the updated omp, session plugin and hub");
+	});
+
 	it("loads the session's settings into the selects and shows the modes", async () => {
 		const calls = mockHub({ info: () => json({ ...INFO, mode: { ...INFO.mode, plan: true } }) });
 		const h = mount();
@@ -603,7 +635,7 @@ describe("session commands panel", () => {
 		expect(valueOf(selects[0])).toBe("anthropic/claude-opus");
 		expect(valueOf(selects[1])).toBe("medium");
 		expect(all(h.container, "select option").map(o => o.textContent)).toContain("Opus (anthropic/claude-opus)");
-		expect(text(h.container)).toContain("Plan on");
+		expect(text(h.container)).toContain("Plan mode On");
 		expect(byText(h.container, "button", "Exit plan mode")).not.toBeNull();
 	});
 
@@ -896,8 +928,8 @@ describe("session commands panel", () => {
 		const h = mount();
 		await h.render(<SessionCommandsPanel session={session()} onChanged={() => {}} />);
 		await settle();
-		expect(text(h.container)).toContain("Plan paused");
-		expect(text(h.container)).not.toContain("Plan on");
+		expect(text(h.container)).toContain("Plan mode Paused");
+		expect(text(h.container)).not.toContain("Plan mode On");
 		expect(byText(h.container, "button", "Enter plan mode")).toBeNull();
 		await click(byText(h.container, "button", "Resume plan mode"));
 		const dialog = h.body.querySelector("[role=dialog]") as Element;
@@ -928,7 +960,7 @@ describe("session commands panel", () => {
 		const h = mount();
 		await h.render(<SessionCommandsPanel session={session()} onChanged={() => {}} />);
 		await settle();
-		expect(text(h.container)).toContain("Plan on");
+		expect(text(h.container)).toContain("Plan mode On");
 		expect(all(h.container, "button").filter(b => b.textContent === "Exit plan mode")).toHaveLength(1);
 		expect(byText(h.container, "button", "Resume plan mode")).toBeNull();
 	});
@@ -948,7 +980,7 @@ describe("session commands panel", () => {
 		};
 		await settle(100);
 		expect(valueOf(all(h.container, "select")[0])).toBe("anthropic/claude-haiku");
-		expect(text(h.container)).toContain("Plan paused");
+		expect(text(h.container)).toContain("Plan mode Paused");
 		expect(urlEnds(calls, "/session-info").length).toBeGreaterThan(2);
 	});
 
@@ -1022,10 +1054,11 @@ describe("session commands panel", () => {
 		await h.render(<SessionsRoute active selected="sess-1" onSelect={() => {}} />);
 		await settle();
 		const reads = () => urlEnds(calls, "/session-info").length;
-		await click(h.container.querySelector(".term-toggle"));
+		await click(byText(h.body, "[role=tab]", "Terminal"));
+		await click(h.body.querySelector(".term-toggle"));
 		await settle(40);
 		const before = reads();
-		await click(all(h.container, ".term-keys button").find(b => b.getAttribute("aria-label") === "Down") as Element);
+		await click(all(h.body, ".term-keys button").find(b => b.getAttribute("aria-label") === "Down") as Element);
 		await settle(60);
 		expect(urlEnds(calls, "/keys")).toHaveLength(1);
 		expect(reads()).toBe(before + 1);
@@ -1190,8 +1223,8 @@ describe("session commands panel", () => {
 		await confirmPrimary(h);
 		releaseOld(json(INFO)); // pre-command state
 		await settle(25);
-		expect(text(h.container)).toContain("Plan on");
-		expect(text(h.container)).not.toContain("Plan off");
+		expect(text(h.container)).toContain("Plan mode On");
+		expect(text(h.container)).not.toContain("Plan mode Off");
 	});
 
 	it("shows the compacting text while the request is out", async () => {
@@ -1327,60 +1360,66 @@ describe("Sessions page with a terminal dialog", () => {
 	}
 	const waiting = { kind: "confirm" as const, line: "Exit plan mode? (y/n)", observedAt: "2026-11-16T10:00:00Z" };
 
-	it("counts a terminal dialog as needing you, with its badge and tooltip", async () => {
+	it("counts a terminal dialog as needing you and pins its row", async () => {
 		expect(needsYou(session())).toBe(false);
 		expect(needsYou(session({ terminal: { available: true, waiting: null, unknown: true } }))).toBe(false);
 		expect(needsYou(session({ terminal: { available: true, waiting, unknown: false } }))).toBe(true);
 
 		const sessions = [
+			session({ instanceId: "inst-2", sessionId: "sess-2", sessionName: "Quiet" }),
 			session({
 				terminal: { available: true, waiting, unknown: false },
 				waitingSince: Date.now() - 120_000,
 				waitingObserved: true,
 			}),
-			session({ instanceId: "inst-2", sessionId: "sess-2", sessionName: "Quiet" }),
 		];
 		mockHub({ sessions: () => json({ sessions, now: Date.now() }) });
 		const h = withMedia(mount());
 		await h.render(<SessionsRoute active selected={null} onSelect={() => {}} />);
 		await settle();
-		const needs = h.container.querySelector(".sess-group[data-needs=true]");
-		expect(needs?.textContent).toContain("Needs you · 1");
-		expect(needs?.textContent).toContain("Waiting in terminal");
-		expect(needs?.textContent).not.toContain("Quiet");
-		const badge = byText(needs as Element, ".badge", "Waiting in terminal");
-		expect(badge?.getAttribute("title")).toBe("detected from the screen");
+		const pinned = all(h.container, "tbody tr[data-pinned=true]");
+		expect(pinned).toHaveLength(1);
+		expect(text(pinned[0])).toContain("Needs you");
+		expect(text(pinned[0])).not.toContain("Quiet");
 	});
 
-	it("shows the terminal line and the Terminal panel in the detail, locked", async () => {
+	it("shows the terminal line, and the Terminal tab locked", async () => {
 		const sessions = [session({ terminal: { available: true, waiting, unknown: false } })];
 		const calls = mockHub({ sessions: () => json({ sessions, now: Date.now() }) });
 		const h = withMedia(mount());
 		await h.render(<SessionsRoute active selected="sess-1" onSelect={() => {}} />);
 		await settle();
-		expect(text(h.container)).toContain("Waiting in terminal: Exit plan mode? (y/n)");
-		expect(h.container.querySelector(".term-toggle")).not.toBeNull();
-		expect(h.container.querySelector(".term-keys")).toBeNull();
+		expect(text(h.body)).toContain("Waiting in terminal: Exit plan mode? (y/n)");
+		await click(byText(h.body, "[role=tab]", "Terminal"));
+		await settle();
+		expect(h.body.querySelector(".term-toggle")).not.toBeNull();
+		expect(h.body.querySelector(".term-keys")).toBeNull();
 		expect(urlEnds(calls, "/screen")).toHaveLength(0);
-		expect(byText(h.container, ".card-title, h2, h3", "Session")).not.toBeNull();
 	});
 
-	it("hides the Terminal panel when the terminal isn't available", async () => {
+	it("keeps the Terminal tab when the terminal isn't available and says why, without the terminal itself", async () => {
 		const sessions = [
 			session({ terminal: { available: false, waiting: null, unknown: false } }),
 			session({ instanceId: "i2", sessionId: "s2", terminal: undefined }),
 		];
 		mockHub({ sessions: () => json({ sessions, now: Date.now() }) });
 		const h = withMedia(mount());
+		const tabs = () => all(h.body, "[role=tab]").map(t => text(t));
 		await h.render(<SessionsRoute active selected="sess-1" onSelect={() => {}} />);
 		await settle();
-		expect(h.container.querySelector(".term-toggle")).toBeNull();
+		// The tab stays (N14): it explains why, and no screen is read or keys offered.
+		expect(tabs()).toContain("Terminal");
+		await click(byText(h.body, "[role=tab]", "Terminal"));
+		expect(text(h.body)).toContain("hasn't matched this session to a herdr pane yet; it checks every 15 seconds");
+		expect(h.body.querySelector(".term-toggle, .term-screen")).toBeNull();
 		await h.render(<SessionsRoute active selected="s2" onSelect={() => {}} />);
 		await settle();
-		expect(h.container.querySelector(".term-toggle")).toBeNull();
+		expect(tabs()).toContain("Terminal");
+		await click(byText(h.body, "[role=tab]", "Terminal"));
+		expect(text(h.body)).toContain("hub doesn't report terminals");
 	});
 
-	it("points the plan-review restart hint at the Terminal panel only when it is there", async () => {
+	it("points the plan-review restart hint at the Terminal tab only when it is there", async () => {
 		const sessions = [
 			session({ planControl: "restart_needed", terminal: { available: true, waiting: null, unknown: false } }),
 			session({
@@ -1394,22 +1433,11 @@ describe("Sessions page with a terminal dialog", () => {
 		const h = withMedia(mount());
 		await h.render(<SessionsRoute active selected="sess-1" onSelect={() => {}} />);
 		await settle();
-		expect(text(h.container)).toContain(RESTART_FOR_PLAN_OR_TERMINAL);
+		expect(text(h.body)).toContain(RESTART_FOR_PLAN_OR_TERMINAL);
 		await h.render(<SessionsRoute active selected="s2" onSelect={() => {}} />);
 		await settle();
-		expect(text(h.container)).toContain(RESTART_FOR_PLAN);
-		expect(text(h.container)).not.toContain("Terminal panel below");
-	});
-
-	it("explains the new controls in the page's help", async () => {
-		mockHub();
-		const h = withMedia(mount());
-		await h.render(<SessionsRoute active selected={null} onSelect={() => {}} />);
-		await settle();
-		const help = text(h.container);
-		expect(help).toContain("Waiting in terminal");
-		expect(help).toContain("Control terminal");
-		expect(help).not.toContain("can't be changed from here yet");
+		expect(text(h.body)).toContain(RESTART_FOR_PLAN);
+		expect(text(h.body)).not.toContain("Terminal tab");
 	});
 });
 

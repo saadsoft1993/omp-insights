@@ -660,6 +660,9 @@ const AGGREGATE_COLUMNS = `
 	SUM(f.unpriced) AS unpriced,
 	TOTAL(f.cached_prompt_cost) AS cached_prompt_cost,
 	TOTAL(f.no_cache_input_cost) AS no_cache_input_cost,
+	SUM(f.duration_n) AS duration_n,
+	SUM(f.ttft_n) AS ttft_n,
+	SUM(f.tps_n) AS tps_n,
 	TOTAL(f.duration_sum) / NULLIF(SUM(f.duration_n), 0) AS avg_duration,
 	TOTAL(f.ttft_sum) / NULLIF(SUM(f.ttft_n), 0) AS avg_ttft,
 	TOTAL(f.tps_sum) / NULLIF(SUM(f.tps_n), 0) AS avg_tps,
@@ -678,6 +681,9 @@ interface AggregateRow {
 	unpriced: number | null;
 	cached_prompt_cost: number | null;
 	no_cache_input_cost: number | null;
+	duration_n: number | null;
+	ttft_n: number | null;
+	tps_n: number | null;
 	avg_duration: number | null;
 	avg_ttft: number | null;
 	avg_tps: number | null;
@@ -706,6 +712,11 @@ function toAggregatedStats(row: AggregateRow | undefined): AggregatedStats {
 				? totalCacheReadTokens / (totalInputTokens + totalCacheReadTokens)
 				: 0,
 		cacheSavings: noCacheInputCost > 0 ? (noCacheInputCost - cachedPromptCost) / noCacheInputCost : 0,
+		noCacheInputCost,
+		cachedPromptCost,
+		durationN: row?.duration_n ?? 0,
+		ttftN: row?.ttft_n ?? 0,
+		tpsN: row?.tps_n ?? 0,
 		totalCost: row?.cost_total ?? 0,
 		unpricedRequests: row?.unpriced ?? 0,
 		totalPremiumRequests: row?.premium_requests ?? 0,
@@ -813,10 +824,23 @@ export function getUsageAttribution(
 
 /** Requests, errors, tokens and cost per bucket. */
 export function getTimeSeries({ cutoff, bucketMs }: RangeWindow): TimeSeriesPoint[] {
-	return queryMessages<{ bucket: number | string; requests: number; errors: number; tokens: number; cost: number }>(
+	return queryMessages<{
+		bucket: number | string;
+		requests: number;
+		errors: number;
+		tokens: number;
+		cost: number;
+		duration_n: number;
+		ttft_n: number;
+		tps_n: number;
+		no_cache_input_cost: number;
+		cached_prompt_cost: number;
+	}>(
 		{ cutoff, bucketMs },
 		`${seriesBucket(bucketMs)} AS bucket, SUM(f.requests) AS requests, SUM(f.failed) AS errors,
-		 SUM(f.total_tokens) AS tokens, TOTAL(f.cost_total) AS cost`,
+		 SUM(f.total_tokens) AS tokens, TOTAL(f.cost_total) AS cost, SUM(f.duration_n) AS duration_n,
+		 SUM(f.ttft_n) AS ttft_n, SUM(f.tps_n) AS tps_n, TOTAL(f.no_cache_input_cost) AS no_cache_input_cost,
+		 TOTAL(f.cached_prompt_cost) AS cached_prompt_cost`,
 		"GROUP BY 1 ORDER BY 1",
 	).map(row => ({
 		timestamp: seriesTimestamp(row.bucket),
@@ -824,6 +848,11 @@ export function getTimeSeries({ cutoff, bucketMs }: RangeWindow): TimeSeriesPoin
 		errors: row.errors,
 		tokens: row.tokens,
 		cost: row.cost,
+		durationN: row.duration_n,
+		ttftN: row.ttft_n,
+		tpsN: row.tps_n,
+		noCacheInputCost: row.no_cache_input_cost,
+		cachedPromptCost: row.cached_prompt_cost,
 	}));
 }
 
@@ -848,19 +877,24 @@ export function getModelPerformanceSeries({ cutoff, bucketMs }: RangeWindow): Mo
 		model: string;
 		provider: string;
 		requests: number;
+		ttft_n: number;
+		tps_n: number;
 		avg_ttft: number | null;
 		avg_tps: number | null;
 	}>(
 		{ cutoff, bucketMs },
 		`${seriesBucket(bucketMs)} AS bucket, f.model AS model, f.provider AS provider, SUM(f.requests) AS requests,
 		 TOTAL(f.ttft_sum) / NULLIF(SUM(f.ttft_n), 0) AS avg_ttft,
-		 TOTAL(f.tps_sum) / NULLIF(SUM(f.tps_n), 0) AS avg_tps`,
+		 TOTAL(f.tps_sum) / NULLIF(SUM(f.tps_n), 0) AS avg_tps,
+		 SUM(f.ttft_n) AS ttft_n, SUM(f.tps_n) AS tps_n`,
 		"GROUP BY 1, f.model, f.provider ORDER BY 1",
 	).map(row => ({
 		timestamp: seriesTimestamp(row.bucket),
 		model: row.model,
 		provider: row.provider,
 		requests: row.requests,
+		ttftN: row.ttft_n,
+		tpsN: row.tps_n,
 		avgTtft: row.avg_ttft,
 		avgTokensPerSecond: row.avg_tps,
 	}));
@@ -915,13 +949,14 @@ export function getStatsByProvider(cutoff: number | null = null): ProviderAggreg
 		unpriced: number;
 		premium_requests: number;
 		avg_tps: number | null;
+		tps_n: number;
 	}>(
 		{ cutoff },
 		`f.provider AS provider, SUM(f.requests) AS requests, SUM(f.failed) AS failed,
 		 COUNT(DISTINCT f.model) AS models, SUM(f.input_tokens) AS input_tokens, SUM(f.output_tokens) AS output_tokens,
 		 SUM(f.cache_read_tokens) AS cache_read_tokens, SUM(f.cache_write_tokens) AS cache_write_tokens,
 		 TOTAL(f.cost_total) AS cost_total, SUM(f.unpriced) AS unpriced, TOTAL(f.premium_requests) AS premium_requests,
-		 TOTAL(f.tps_sum) / NULLIF(SUM(f.tps_n), 0) AS avg_tps`,
+		 TOTAL(f.tps_sum) / NULLIF(SUM(f.tps_n), 0) AS avg_tps, SUM(f.tps_n) AS tps_n`,
 		"GROUP BY f.provider",
 	)
 		.map(row => ({
@@ -938,6 +973,7 @@ export function getStatsByProvider(cutoff: number | null = null): ProviderAggreg
 			unpricedRequests: row.unpriced,
 			totalPremiumRequests: row.premium_requests,
 			avgTokensPerSecond: row.avg_tps,
+			tpsN: row.tps_n,
 		}))
 		.sort((a, b) => b.totalTokens - a.totalTokens);
 }

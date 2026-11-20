@@ -24,13 +24,22 @@ describe("sessions hash route", () => {
 	});
 
 	it("round-trips through buildHash with the id encoded", () => {
-		const route = { section: "sessions" as const, range: "24h" as const, session: null, hubSession: "a/b c" };
+		const route = {
+			section: "sessions" as const,
+			range: "24h" as const,
+			session: null,
+			hubSession: "a/b c",
+			sub: null,
+			params: {},
+		};
 		const hash = buildHash(route);
 		expect(hash).toBe("#/sessions/a%2Fb%20c?range=24h");
 		expect(parseHash(hash)).toEqual(route);
 	});
 
 	it("drops the selection outside the sessions page", () => {
-		expect(buildHash({ section: "models", range: "24h", session: null, hubSession: "x" })).toBe("#/models?range=24h");
+		expect(
+			buildHash({ section: "models", range: "24h", session: null, hubSession: "x", sub: null, params: {} }),
+		).toBe("#/models?range=24h");
 	});
 });

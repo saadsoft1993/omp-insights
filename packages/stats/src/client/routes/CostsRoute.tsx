@@ -1,3 +1,7 @@
+import { ALL_MACHINES, concreteMachine, useSelectedMachine } from "../app/machine";
+import { MissingMachineNumbers } from "../app/MachineBanner";
+import { fleetQueryView, useFleetQuery } from "../data/fleet-query";
+import { mergeCosts } from "../data/fleet-merge";
 import "./costs.css";
 import { useMemo, useState } from "react";
 import { getCostDashboardStats } from "../api";
@@ -61,7 +65,17 @@ const LOCAL_DAY_LONG = new Intl.DateTimeFormat(undefined, {
 });
 
 export function CostsRoute({ active, range }: CostsRouteProps) {
-	const query = useQuery(["costs", range], ({ signal }) => getCostDashboardStats(range, signal), { enabled: active });
+	const allMachines = useSelectedMachine() === ALL_MACHINES;
+	const single = useQuery(["costs", range], ({ signal }) => getCostDashboardStats(range, signal, concreteMachine()), {
+		enabled: active && !allMachines,
+	});
+	const fleet = useFleetQuery(
+		["costs", range],
+		(machine, signal) => getCostDashboardStats(range, signal, machine),
+		mergeCosts,
+		{ enabled: active && allMachines },
+	);
+	const query = allMachines ? fleetQueryView(single, fleet) : single;
 	const meta = rangeMeta(range);
 	const [split, setSplit] = useState<SplitMode>("model");
 	const [hidden, toggleSeries] = useHiddenSeries();
@@ -73,6 +87,7 @@ export function CostsRoute({ active, range }: CostsRouteProps) {
 
 	return (
 		<div className="page">
+			{allMachines && <MissingMachineNumbers machines={fleet.machines} />}
 			<PageHeader
 				title="Costs"
 				description={`What ${meta.windowLabel} of usage would cost at public API rates. Subscription usage without a public price is counted as unpriced, not free.`}
@@ -103,7 +118,13 @@ export function CostsRoute({ active, range }: CostsRouteProps) {
 					}
 					stale={query.stale}
 				>
-					<QueryView query={query} skeleton={<ChartSkeleton height={280} />} isEmpty={isEmpty} empty={empty}>
+					<QueryView
+						hideError
+						query={query}
+						skeleton={<ChartSkeleton height={280} />}
+						isEmpty={isEmpty}
+						empty={empty}
+					>
 						{() => {
 							if (!view) return null;
 							const series = split === "model" ? view.modelSeries : view.componentSeries;
@@ -147,7 +168,13 @@ export function CostsRoute({ active, range }: CostsRouteProps) {
 				</Card>
 
 				<Card index={2} title="Where it went" description="Estimate by billing component" stale={query.stale}>
-					<QueryView query={query} skeleton={<ChartSkeleton height={280} />} isEmpty={isEmpty} empty={empty}>
+					<QueryView
+						hideError
+						query={query}
+						skeleton={<ChartSkeleton height={280} />}
+						isEmpty={isEmpty}
+						empty={empty}
+					>
 						{() => view && <ComponentBreakdown summary={view.summary} />}
 					</QueryView>
 				</Card>
@@ -160,7 +187,7 @@ export function CostsRoute({ active, range }: CostsRouteProps) {
 				stale={query.stale}
 				flush
 			>
-				<QueryView query={query} skeleton={<TableSkeleton rows={8} />} isEmpty={isEmpty} empty={empty}>
+				<QueryView hideError query={query} skeleton={<TableSkeleton rows={8} />} isEmpty={isEmpty} empty={empty}>
 					{() =>
 						view && (
 							<Table
@@ -244,7 +271,7 @@ function CostStats({ view, stale }: { view: CostsView; stale: boolean }) {
 		<div data-stale={stale}>
 			<StatGrid min={180}>
 				<Stat
-					label="API-equivalent estimate"
+					label="API-equivalent cost"
 					title="What this usage would cost at public API rates"
 					value={formatEstimatedCost(summary.totalCost, summary.unpricedRequests)}
 					hint={`${formatInteger(summary.requests)} requests`}

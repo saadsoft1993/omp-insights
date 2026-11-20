@@ -1,0 +1,763 @@
+/* Model flow: compare, edit, review and save (prototype: docs/mockups/omp-tables-redesign, "Model flow"). */
+.mf-page .page-actions {
+	align-items: flex-start;
+}
+.mf-match {
+	display: inline-flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 2px;
+}
+.mf-page .hint,
+.mf-editor .hint {
+	font-size: 12px;
+	color: var(--ink-3);
+}
+.mf-scope-note,
+.mf-stale-note {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12.5px;
+	color: var(--ink-3);
+	margin-top: -6px;
+}
+.mf-scope-note b {
+	color: var(--ink-2);
+	font-weight: 550;
+}
+.mf-stale-note {
+	color: var(--warn);
+}
+.mf-callout {
+	font-size: 12.5px;
+	color: var(--ink-2);
+	padding: 9px 11px;
+	border-radius: var(--r-control);
+	background: var(--warn-soft);
+	border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+}
+.mf-callout b {
+	color: var(--ink-1);
+}
+.mf-callout[data-tone="bad"] {
+	background: var(--bad-soft);
+	border-color: color-mix(in srgb, var(--bad) 30%, transparent);
+}
+.mf-callout[data-tone="ok"] {
+	background: var(--ok-soft);
+	border-color: color-mix(in srgb, var(--ok) 30%, transparent);
+}
+.mf-callout-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 8px;
+}
+.mf-dim {
+	color: var(--ink-3);
+}
+.mf-grow {
+	flex: 1;
+}
+
+/* Summary line inside the card */
+.mf-sum {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px 12px;
+	padding: 10px 16px;
+	border-top: 1px solid var(--line-1);
+	font-size: 12.5px;
+}
+.mf-sum b {
+	font-weight: 600;
+}
+.mf-sum[data-tone="warn"] {
+	background: color-mix(in srgb, var(--warn) 7%, transparent);
+}
+/* "Not compared: …" names every machine whose values are missing from the counts. */
+.mf-missing {
+	flex-basis: 100%;
+	padding-left: 20px;
+}
+.mf-only {
+	display: inline-flex;
+	gap: 6px;
+	align-items: center;
+}
+.mf-page .std-mobile-sort {
+	display: none !important;
+}
+.mf-page .table--std thead th {
+	border-top: 1px solid var(--line-1);
+}
+
+/* Role cell */
+.mf-role {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+}
+.mf-role-text {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	flex: 1;
+}
+.mf-role-name {
+	font-weight: 500;
+	color: var(--ink-1);
+	line-height: 18px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.mf-role-sub,
+.mf-role-note {
+	font-size: 12px;
+	color: var(--ink-3);
+	line-height: 17px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.mf-role-sub .mono {
+	font-family: inherit;
+}
+.mf-role-note[data-tone="warn"] {
+	color: var(--warn);
+}
+.mf-pill {
+	display: none;
+	align-items: center;
+	height: 20px;
+	padding: 0 8px;
+	border-radius: var(--r-pill);
+	font-size: 11.5px;
+	font-weight: 500;
+	white-space: nowrap;
+	flex: none;
+}
+.mf-pill[data-tone="ok"] {
+	background: var(--ok-soft);
+	color: var(--ok);
+}
+.mf-pill[data-tone="warn"] {
+	background: var(--warn-soft);
+	color: var(--warn);
+}
+
+/* Machine cells */
+.mf-page .table--std td[data-kind="model"],
+.mf-page .table--std td[data-kind="actions"] {
+	overflow: visible;
+}
+.mf-page .table--std tbody tr:has(.mf-editor, .mf-menu) {
+	position: relative;
+	z-index: 5;
+}
+.mf-cell {
+	display: inline-flex;
+	align-items: center;
+}
+.mf-cell-machine {
+	display: none;
+}
+.mf-cell-value {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+}
+.mf-cellbtn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	border-radius: var(--r-chip);
+	padding: 2px;
+	margin: -2px;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+.mf-cellbtn:disabled {
+	cursor: not-allowed;
+}
+.mf-cellbtn:hover:not(:disabled) .mf-chip {
+	border-color: var(--line-4);
+}
+.mf-pencil {
+	flex: none;
+	opacity: 0;
+	color: var(--ink-3);
+}
+.mf-cellbtn:hover:not(:disabled) .mf-pencil,
+.mf-cellbtn:focus-visible .mf-pencil,
+.mf-cellbtn[aria-expanded="true"] .mf-pencil {
+	opacity: 1;
+}
+.mf-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	padding: 0 4px 0 8px;
+	border-radius: var(--r-chip);
+	border: 1px solid var(--line-2);
+	background: var(--raised);
+	font-size: 12.5px;
+	color: var(--ink-1);
+	white-space: nowrap;
+	max-width: 100%;
+	min-width: 0;
+}
+.mf-chip:not(:has(.mf-think)) {
+	padding-right: 8px;
+}
+.mf-chip[data-state="diff"] {
+	border: 1px dashed var(--warn);
+	background: var(--warn-soft);
+}
+.mf-chip[data-state="pending"] {
+	border: 1px solid var(--accent-a);
+	background: color-mix(in srgb, var(--accent-a) 12%, transparent);
+}
+.mf-chip[data-state="stale"] {
+	opacity: 0.5;
+}
+.mf-sw,
+.mf-msw {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 2px;
+	flex: none;
+}
+.mf-think {
+	font-size: 10.5px;
+	font-family: var(--font-mono);
+	color: var(--ink-3);
+	padding: 0 5px;
+	height: 16px;
+	line-height: 16px;
+	border-radius: 4px;
+	background: var(--line-1);
+	flex: none;
+}
+.mf-think:is([data-level="high"], [data-level="xhigh"], [data-level="max"]) {
+	color: var(--accent-a);
+}
+.mf-diffmark {
+	font-size: 11px;
+	color: var(--warn);
+	font-weight: 600;
+	margin-left: 6px;
+}
+.mf-was {
+	font-size: 11px;
+	color: var(--ink-3);
+	text-decoration: line-through;
+	margin-left: 6px;
+	white-space: nowrap;
+}
+.mf-lastknown {
+	font-size: 11.5px;
+	color: var(--ink-3);
+	margin-left: 6px;
+	white-space: nowrap;
+}
+/* A machine with no values read: never a "Not set" chip, which would claim the role is unset. */
+.mf-nodata {
+	display: inline-flex;
+	align-items: center;
+	height: 24px;
+	padding: 0 8px;
+	border-radius: var(--r-chip);
+	border: 1px dashed var(--line-2);
+	font-size: 12px;
+	color: var(--ink-3);
+	white-space: nowrap;
+}
+.mf-nodata[data-state="loading"] {
+	border-style: solid;
+	border-color: var(--line-1);
+	background: linear-gradient(90deg, transparent, var(--hover), transparent) 0 0 / 200% 100%;
+	animation: shimmer 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+	.mf-nodata[data-state="loading"] {
+		animation: none;
+	}
+}
+/* A column without current values is greyed and left out of the comparison. */
+.mf-colh {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+.mf-colh:not([data-avail="fresh"]) {
+	color: var(--ink-3);
+}
+.mf-coltag {
+	padding: 0 6px;
+	border-radius: var(--r-chip);
+	border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+	color: var(--warn);
+	font-size: 10.5px;
+	font-weight: 500;
+	line-height: 16px;
+	white-space: nowrap;
+}
+.mf-cell:is([data-avail="stale"], [data-avail="failed"]) .mf-cell-machine {
+	color: var(--ink-3);
+}
+
+/* Header machine highlight (column index from data-hl) */
+.mf-page[data-hl="2"] .table--std :is(th, td):nth-child(2),
+.mf-page[data-hl="3"] .table--std :is(th, td):nth-child(3),
+.mf-page[data-hl="4"] .table--std :is(th, td):nth-child(4),
+.mf-page[data-hl="5"] .table--std :is(th, td):nth-child(5),
+.mf-page[data-hl="6"] .table--std :is(th, td):nth-child(6),
+.mf-page[data-hl="7"] .table--std :is(th, td):nth-child(7) {
+	background: color-mix(in srgb, var(--accent-a) 6%, transparent);
+}
+.mf-page[data-hl="2"] .table--std th:nth-child(2),
+.mf-page[data-hl="3"] .table--std th:nth-child(3),
+.mf-page[data-hl="4"] .table--std th:nth-child(4),
+.mf-page[data-hl="5"] .table--std th:nth-child(5),
+.mf-page[data-hl="6"] .table--std th:nth-child(6),
+.mf-page[data-hl="7"] .table--std th:nth-child(7) {
+	color: var(--ink-1);
+	background: color-mix(in srgb, var(--accent-a) 6%, var(--card));
+	box-shadow: inset 0 2px 0 var(--accent-a);
+}
+
+/* Row menu */
+.mf-rowmenu {
+	position: relative;
+	display: inline-block;
+}
+.mf-menu,
+.mf-editor {
+	position: absolute;
+	z-index: 40;
+	border-radius: var(--r-card);
+	border: 1px solid var(--line-2);
+	box-shadow: var(--shadow-3);
+	text-align: left;
+	white-space: normal;
+}
+:root .mf-menu,
+:root .mf-editor {
+	background: #141417;
+}
+[data-theme="light"] .mf-menu,
+[data-theme="light"] .mf-editor {
+	background: #fff;
+}
+.mf-menu {
+	right: 0;
+	top: calc(100% + 4px);
+	width: 390px;
+	max-width: calc(100cqw - 24px);
+	max-height: var(--mf-pop-max, none);
+	overflow: auto;
+	padding: 5px;
+}
+/* Flipped above the anchor when there is no room below (model-flow-popover.ts). */
+.mf-menu[data-side="above"],
+.mf-editor[data-side="above"] {
+	top: auto;
+	bottom: calc(100% + 4px);
+}
+.mf-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 7px 8px;
+	border-radius: var(--r-control);
+	border: 0;
+	background: none;
+	color: var(--ink-1);
+	font: inherit;
+	font-size: 13px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.mf-menu-item:hover:not(:disabled),
+.mf-menu-item:focus-visible {
+	background: var(--hover);
+}
+.mf-menu-item:disabled {
+	color: var(--ink-3);
+	cursor: not-allowed;
+}
+.mf-menu-item small {
+	margin-left: auto;
+	color: var(--ink-3);
+	font-size: 11.5px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Model picker */
+.mf-editor {
+	top: calc(100% + 4px);
+	left: 0;
+	width: 340px;
+	max-width: calc(100cqw - 24px);
+	max-height: var(--mf-pop-max, none);
+	overflow: auto;
+	padding: 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.mf-editor > :not(.mf-mlist) {
+	flex: none;
+}
+.mf-lbl {
+	font-size: 11.5px;
+	color: var(--ink-3);
+	font-weight: 500;
+}
+.mf-editor .mf-search {
+	flex: none;
+	max-width: none;
+}
+.mf-mlist {
+	/* The list gives up height first, so the thinking level and Save / Cancel stay in view. */
+	flex: 0 1 240px;
+	min-height: 96px;
+	max-height: 240px;
+	overflow: auto;
+	border: 1px solid var(--line-1);
+	border-radius: var(--r-control);
+	padding: 4px;
+}
+.mf-pgroup {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--ink-3);
+	padding: 6px 6px 2px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.mf-pgroup .mono {
+	font-weight: 400;
+}
+.mf-mopt {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 5px 6px;
+	border-radius: 6px;
+	font-size: 12.5px;
+	cursor: pointer;
+}
+.mf-mopt span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.mf-mopt small {
+	margin-left: auto;
+	color: var(--ink-3);
+	font-family: var(--font-mono);
+	font-size: 10.5px;
+	max-width: 50%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: none;
+}
+.mf-mopt:hover,
+.mf-mopt[data-active="true"] {
+	background: var(--hover);
+}
+.mf-mopt[data-active="true"] {
+	box-shadow: inset 0 0 0 1px var(--focus);
+}
+.mf-mopt[aria-selected="true"] {
+	background: var(--selected);
+	box-shadow: inset 0 0 0 1px var(--line-3);
+}
+.mf-mopt[aria-selected="true"][data-active="true"] {
+	box-shadow: inset 0 0 0 1px var(--focus);
+}
+.mf-more {
+	padding: 4px 6px;
+}
+.mf-segmented {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-self: flex-start;
+	padding: 2px;
+	border-radius: var(--r-control);
+	background: var(--card);
+	border: 1px solid var(--line-2);
+}
+.mf-seg {
+	height: 26px;
+	padding: 0 10px;
+	border-radius: 6px;
+	font: inherit;
+	font-size: 12.5px;
+	font-weight: 500;
+	color: var(--ink-3);
+	background: none;
+	border: 1px solid transparent;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.mf-seg:hover {
+	color: var(--ink-1);
+}
+.mf-seg[aria-checked="true"] {
+	color: var(--ink-1);
+	background: var(--raised);
+	border-color: var(--line-3);
+}
+.mf-foot {
+	position: sticky;
+	bottom: -10px;
+	margin: 0 -10px -10px;
+	padding: 6px 10px 10px;
+	border-radius: 0 0 var(--r-card) var(--r-card);
+	background: inherit;
+	display: flex;
+	justify-content: flex-end;
+	gap: 6px;
+}
+
+/* Unsaved-changes bar */
+.mf-changebar {
+	position: sticky;
+	bottom: 12px;
+	z-index: 20;
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px 12px;
+	padding: 10px 14px;
+	border-radius: var(--r-card);
+	border: 1px solid var(--accent-line);
+	background: color-mix(in srgb, var(--card) 92%, var(--accent) 8%);
+	box-shadow: var(--shadow-3);
+	font-size: 13px;
+}
+.mf-changebar b {
+	font-weight: 600;
+}
+
+/* Review dialog */
+.mf-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 80;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 16px;
+	background: rgba(0, 0, 0, 0.55);
+}
+.mf-modal {
+	width: min(600px, 100%);
+	max-height: 100%;
+	display: flex;
+	flex-direction: column;
+	border-radius: var(--r-panel);
+	border: 1px solid var(--line-2);
+	box-shadow: var(--shadow-3);
+	overflow: hidden;
+	background: #121215;
+	animation: rise var(--dur-3) var(--ease-out) both;
+}
+[data-theme="light"] .mf-modal {
+	background: #fff;
+}
+.mf-modal-h {
+	padding: 16px 16px 8px 18px;
+}
+.mf-modal-h h2 {
+	font-size: 15px;
+	font-weight: 600;
+}
+.mf-modal-h p {
+	font-size: 12.5px;
+	color: var(--ink-3);
+	margin-top: 2px;
+}
+.mf-modal-b {
+	padding: 6px 18px 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	overflow: auto;
+	min-height: 0;
+}
+.mf-modal-f {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	padding: 12px 18px;
+	border-top: 1px solid var(--line-1);
+}
+.mf-mach-sec {
+	border: 1px solid var(--line-1);
+	border-radius: var(--r-control);
+	overflow: hidden;
+}
+.mf-mach-sec > header {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 8px 12px;
+	background: var(--raised);
+	font-size: 12.5px;
+}
+.mf-include {
+	margin-left: auto;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--ink-3);
+}
+.mf-mach-sec ul {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+.mf-mach-sec li {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 12px;
+	border-top: 1px solid var(--line-1);
+	font-size: 12.5px;
+}
+.mf-review-role {
+	min-width: 150px;
+	color: var(--ink-2);
+}
+.mf-mach-sec .mf-callout {
+	margin: 8px 12px;
+}
+
+/* Phone: one card per role, a line per machine */
+@container (max-width: 600px) {
+	.mf-page .table--std tbody tr:not(.std-group):not(.std-detail) {
+		padding: 12px 16px;
+		align-items: center;
+	}
+	.mf-page .table--std tbody td {
+		height: auto;
+	}
+	.mf-page .table--std tbody td[data-kind="model"] {
+		order: 2;
+		flex: 1 1 100%;
+		background: none !important;
+	}
+	.mf-page .table--std tbody td:first-child {
+		flex: 1 1 0;
+	}
+	.mf-page .table--std tbody td[data-kind="actions"] {
+		flex: none;
+		order: 1;
+	}
+	.mf-pill {
+		display: inline-flex;
+	}
+	.mf-role-sub .mono {
+		font-family: var(--font-mono);
+	}
+	.mf-role-used {
+		display: none;
+	}
+	.mf-cell {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 8px;
+		width: 100%;
+		font-size: 12px;
+		color: var(--ink-2);
+	}
+	.mf-cell-machine {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		width: 92px;
+		flex: none;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.mf-cell-value {
+		flex-wrap: wrap;
+		flex: 1 1 0;
+	}
+	/* The header machine's line in each role card (the desktop highlights its column instead). */
+	.mf-cell[data-selected="true"] {
+		margin: -4px -8px;
+		padding: 4px 8px;
+		width: calc(100% + 16px);
+		border-radius: var(--r-control);
+		background: color-mix(in srgb, var(--accent-a) 10%, transparent);
+		box-shadow: inset 2px 0 0 var(--accent-a);
+	}
+	.mf-cell[data-selected="true"] .mf-cell-machine {
+		color: var(--ink-1);
+		font-weight: 500;
+	}
+	.mf-editor {
+		position: static;
+		flex: 1 1 100%;
+		width: 100%;
+		max-width: none;
+		margin-top: 6px;
+	}
+	.mf-menu {
+		width: min(340px, calc(100cqw - 24px));
+	}
+}
+@media (max-width: 600px) {
+	.mf-page .page-actions {
+		width: 100%;
+	}
+	.mf-match {
+		align-items: flex-start;
+	}
+}
+.mf-editor .mf-search,
+.mf-editor .mf-search .input {
+	width: 100%;
+	max-width: none;
+}
+.mf-page .table--std td[data-kind="model"]:nth-last-child(2) .mf-editor {
+	left: auto;
+	right: 0;
+}
+.mf-cell-machine > span:last-child {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.mf-page .table--std .std-summary {
+	display: block;
+	padding: 0;
+	border-top: 0;
+}

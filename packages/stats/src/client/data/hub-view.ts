@@ -1,5 +1,5 @@
-/** Display rules for the quota card and the Jobs view (pure, so they are tested without a DOM). */
-import type { HubGap, HubJob, HubJobStatus, HubQuota, HubQuotaAccount, HubQuotaWindow } from "./hub";
+/** Display rules for the quota card (pure, so they are tested without a DOM). */
+import type { HubQuota, HubQuotaAccount, HubQuotaWindow } from "./hub";
 
 /** "3h 20m", "45m", "<1m" for a span of milliseconds. */
 export function span(ms: number): string {
@@ -87,52 +87,4 @@ export function noBackupNotes(q: HubQuota): string[] {
 	return Object.entries(q.providers)
 		.filter(([provider, count]) => count === 1 && provider.includes("codex"))
 		.map(([provider]) => `${providerName(provider)}: one account, no backup`);
-}
-
-const STATUS_ORDER: Record<HubJobStatus, number> = { failed: 0, unknown: 1, running: 2, ok: 3, "not loaded": 4 };
-
-/** Failed first, then unknown (and unreadable), running, ok, not loaded; each by label. */
-export function jobOrder(a: HubJob, b: HubJob): number {
-	return (
-		STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
-		Number(a.readable) - Number(b.readable) ||
-		a.label.localeCompare(b.label)
-	);
-}
-
-export function statusLabel(job: HubJob): { label: string; tone: "ok" | "warn" | "bad" | "neutral" | "accent" } {
-	switch (job.status) {
-		case "running":
-			return { label: "Running", tone: "accent" };
-		case "ok":
-			return { label: "Last exit ok", tone: "ok" };
-		case "failed":
-			return { label: job.exit ? job.exit.replace(/^last exit/, "Failed, exit") : "Failed", tone: "bad" };
-		case "not loaded":
-			return { label: "Not loaded", tone: "neutral" };
-		default:
-			return { label: "Unknown", tone: "warn" };
-	}
-}
-
-/** "last log write 3h ago", or "no log written" (the plist names no log, or the file does not exist). */
-export function logText(job: HubJob, now: number): string {
-	return job.lastLogWrite ? `last log write ${span(now - job.lastLogWrite)} ago` : "no log written";
-}
-
-export function gapText(g: HubGap): string {
-	const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-	const sameDay = new Date(g.start).toDateString() === new Date(g.end).toDateString();
-	const day = (ms: number) => new Date(ms).toLocaleDateString([], { day: "numeric", month: "short" });
-	const from = sameDay ? clock(g.start) : `${day(g.start)} ${clock(g.start)}`;
-	const to = sameDay ? clock(g.end) : `${day(g.end)} ${clock(g.end)}`;
-	return `${from}–${to} (${span(g.end - g.start)})`;
-}
-
-/** Counts per status for the page header, in display order, skipping zeros. */
-export function statusCounts(jobs: HubJob[]): { status: HubJobStatus; count: number }[] {
-	return (Object.keys(STATUS_ORDER) as HubJobStatus[])
-		.sort((a, b) => STATUS_ORDER[a] - STATUS_ORDER[b])
-		.map(status => ({ status, count: jobs.filter(j => j.status === status).length }))
-		.filter(entry => entry.count > 0);
 }

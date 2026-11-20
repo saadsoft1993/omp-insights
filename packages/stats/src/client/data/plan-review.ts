@@ -16,7 +16,7 @@ export const TRUNCATED_NOTICE =
 	"This plan is longer than the hub can show in full, so approving is off here. Approve it at the Mac, or refine or save it.";
 
 /** The restart hint when the Terminal panel can answer the review in the meantime. */
-export const RESTART_FOR_PLAN_OR_TERMINAL = `${RESTART_FOR_PLAN} Or answer it in the Terminal panel below.`;
+export const RESTART_FOR_PLAN_OR_TERMINAL = `${RESTART_FOR_PLAN} Or answer it in the Terminal tab.`;
 
 /** The hub read a dialog off the session's terminal screen (the session itself did not report it). */
 export function terminalWaiting(s: HubSession) {

@@ -229,6 +229,7 @@ interface AccountDraft {
 	enabledIds: Set<number>;
 	/** Newest disabled credential, for its cause. */
 	lastDisabled: StoredCredential | null;
+	allDisabledRemoved: boolean;
 	requests: number;
 	failedRequests: number;
 	totalTokens: number;
@@ -247,6 +248,7 @@ function newDraft(key: string, provider: string, label: string, identity: Identi
 		credentialIds: [],
 		enabledIds: new Set(),
 		lastDisabled: null,
+		allDisabledRemoved: true,
 		requests: 0,
 		failedRequests: 0,
 		totalTokens: 0,
@@ -318,8 +320,10 @@ function indexAccounts(agent: Pick<AgentAccountData, "credentials" | "accountKey
 		byCredential.set(credential.id, draft);
 		if (credential.disabledCause === null) {
 			draft.enabledIds.add(credential.id);
-		} else if (!draft.lastDisabled || credential.updatedAt >= draft.lastDisabled.updatedAt) {
-			draft.lastDisabled = credential;
+		} else {
+			if (credential.disabledCause !== "deleted by user") draft.allDisabledRemoved = false;
+			if (!draft.lastDisabled || credential.updatedAt >= draft.lastDisabled.updatedAt)
+				draft.lastDisabled = credential;
 		}
 	}
 
@@ -581,7 +585,10 @@ export function buildAccountStats(input: {
 			orgId: org,
 			credentialType: draft.credentialType,
 			credentialIds: [...draft.credentialIds].sort((a, b) => a - b),
-			status: resolveAccountStatus({ needsLogin, blocked: blocks.length > 0, lastUsed: draft.lastUsed }, nowMs),
+			status:
+				needsLogin && draft.allDisabledRemoved
+					? "removed"
+					: resolveAccountStatus({ needsLogin, blocked: blocks.length > 0, lastUsed: draft.lastUsed }, nowMs),
 			disabledCause: needsLogin ? (draft.lastDisabled?.disabledCause ?? null) : null,
 			blocks,
 			requests: draft.requests,

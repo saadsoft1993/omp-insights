@@ -332,6 +332,7 @@ function extractStats(
 		// A message persisted without a terminal stop reason never completed
 		// normally: classify by whether it carried an error.
 		stopReason: msg.stopReason ?? (msg.errorMessage ? "error" : "aborted"),
+		stopReasonPresent: msg.stopReason != null,
 		errorMessage: msg.errorMessage ?? null,
 		usage,
 		agentType,
@@ -879,7 +880,8 @@ export async function listSessionFiles(folderPath: string): Promise<string[]> {
 					e.name.endsWith(".jsonl") &&
 					!isCompressScratchPath(path.relative(folderPath, e.parentPath)),
 			)
-			.map(e => path.join(e.parentPath, e.name));
+			.map(e => path.join(e.parentPath, e.name))
+			.sort(); // readdir order is the filesystem's (sorted on APFS, hashed on ext4); sync in name order everywhere
 	} catch {
 		return [];
 	}

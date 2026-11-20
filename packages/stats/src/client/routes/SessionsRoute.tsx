@@ -1,35 +1,75 @@
-import { ArrowLeft, Eye, Pencil, Play, Power, Square, SquareTerminal } from "lucide-react";
-import { type FormEvent, useMemo, useState, useSyncExternalStore } from "react";
+import { Play, Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-	forceKillHubSession,
+	ALL_MACHINES,
+	type FleetMachine,
+	machineView,
+	shortMachineName,
+	useFleet,
+	useSelectedMachine,
+} from "../app/machine";
+import { formatCost } from "../data/formatters";
+import {
+	createProject,
 	getHubLink,
 	getHubProjects,
 	getHubSessions,
+	getProjectParents,
 	type HubProject,
 	type HubSession,
-	type HubSessions,
-	killHubSession,
+	type HubSessionsMachine,
 	type HubStarted,
-	renameHubSession,
 	startHubSession,
-	stopHubSession,
 } from "../data/hub";
+import { needsYou } from "../data/plan-review";
 import { useQuery } from "../data/query";
-import { needsYou, RESTART_FOR_PLAN, RESTART_FOR_PLAN_OR_TERMINAL, terminalWaiting } from "../data/plan-review";
+import { sessionDisplayName } from "../data/session-controls";
 import {
-	herdrPlace,
-	killConfirmMatches,
-	MAX_NAME_CHARS,
-	nameProblem,
-	sessionControls,
-	sessionDisplayName,
-} from "../data/session-controls";
-import { Badge, Card, EmptyState, PageHeader, QueryView, SearchInput, TableSkeleton, type Tone } from "../ui";
-import { ago, Help, type Notice, NoticeLine } from "./hub-common";
-import { PlanReviewPanel } from "./PlanReviewPanel";
-import { QuotaCard } from "./QuotaCard";
-import { SessionCommandsPanel } from "./SessionCommandsPanel";
-import { TerminalPanel } from "./TerminalPanel";
+	getSessionSubagents,
+	type SessionSubagent,
+	SUBAGENT_STATUS,
+	subagentsFailure,
+	subagentsUnavailable,
+} from "../data/session-subagents";
+import {
+	type NotesChoice,
+	outcomeText,
+	PENDING_TEXT,
+	type PlanNotesAccepted,
+	pollPlanNotes,
+	postPlanNotes,
+} from "../data/session-plan-notes";
+import { ApiError } from "../api";
+import { newMessageId } from "../data/session-ask";
+import { createAndStartProject, sessionOpenUrl, validProjectName } from "../data/session-start";
+import {
+	sessionsSubtitle,
+	machineDown,
+	machineHeld,
+	matchesFilter,
+	projectFolder,
+	providerColor,
+	rowKey,
+	sessionKey,
+	sessionStatus,
+	shortModelName,
+} from "../data/session-view";
+import {
+	EmptyState,
+	formatCompactDuration,
+	LabelCell,
+	MachineCell,
+	Modal,
+	ModelCell,
+	PageHeader,
+	RelativeDateCell,
+	SearchInput,
+	StatusCell,
+	Table,
+	TableSkeleton,
+} from "../ui";
+import { ago, type Notice, NoticeLine } from "./hub-common";
+import { type NotesJob, SessionDrawer } from "./SessionDrawer";
 
 export interface SessionsRouteProps {
 	active: boolean;
@@ -40,32 +80,6 @@ export interface SessionsRouteProps {
 
 const REFRESH_MS = 5000;
 const MAX_PROJECTS = 60;
-const TERMINAL_WAITING_LABEL = "Waiting in terminal";
-const TERMINAL_WAITING_TITLE = "detected from the screen";
-
-function sessionState(s: HubSession): { label: string; tone: Tone } {
-	if (needsYou(s)) return { label: "Needs you", tone: "warn" };
-	if (s.busy === true) return { label: "Working", tone: "accent" };
-	// Its own turn ended, but subagents it started are still running: the task isn't done.
-	const agents = s.agentsRunning ?? 0;
-	if (agents > 0) return { label: `Working · ${agents} subagent${agents === 1 ? "" : "s"}`, tone: "accent" };
-	if (s.busy === false) return { label: "Idle", tone: "ok" };
-	return { label: "Unknown", tone: "neutral" };
-}
-
-const RELAY_LABEL: Record<NonNullable<HubSession["relay"]>, { label: string; tone: Tone }> = {
-	tailnet: { label: "This Mac's relay", tone: "ok" },
-	public: { label: "Still on the public relay", tone: "warn" },
-	unknown: { label: "Relay unknown", tone: "neutral" },
-};
-
-/** Needs you first, then working, then newest. */
-function sessionOrder(a: HubSession, b: HubSession): number {
-	const working = (s: HubSession) => Number(s.busy === true || (s.agentsRunning ?? 0) > 0);
-	return (
-		Number(needsYou(b)) - Number(needsYou(a)) || working(b) - working(a) || (b.startedAt ?? 0) - (a.startedAt ?? 0)
-	);
-}
 
 function errorText(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -76,11 +90,12 @@ function errorText(error: unknown): string {
  * opened during the click itself (Safari blocks tabs opened after an await) and cut off from this page
  * before the link is fetched, so the link is current and the opened page can't reach back in here.
  */
-async function openSession(instanceId: string, view: boolean): Promise<void> {
+export async function openSession(instanceId: string, view: boolean, machine?: string): Promise<void> {
 	const tab = window.open("about:blank", "_blank");
 	if (tab) tab.opener = null;
 	try {
-		const { url } = await getHubLink(instanceId, view);
+		const link = await getHubLink(instanceId, view, machine);
+		const url = sessionOpenUrl(link);
 		if (tab) tab.location.replace(url);
 		else window.open(url, "_blank", "noopener,noreferrer");
 	} catch (error) {
@@ -89,694 +104,604 @@ async function openSession(instanceId: string, view: boolean): Promise<void> {
 	}
 }
 
-const WIDE_QUERY = "(min-width: 768px)";
-
-/** iPad-sized and larger: list and detail side by side. Below it they are separate screens. */
-function useWide(): boolean {
-	return useSyncExternalStore(
-		onChange => {
-			const media = window.matchMedia(WIDE_QUERY);
-			media.addEventListener("change", onChange);
-			return () => media.removeEventListener("change", onChange);
-		},
-		() => window.matchMedia(WIDE_QUERY).matches,
-	);
-}
-
-/** What `#/sessions/<id>` names: omp's session id (the one alerts carry), else the Collab instance. */
-function sessionKey(s: HubSession): string {
-	return s.sessionId ?? s.instanceId;
-}
-
-function projectFolder(s: HubSession): string {
-	return (s.cwd ?? "").split("/").filter(Boolean).pop() ?? "omp session";
-}
-
-/** "waiting 5m", or "waiting (age unknown)" when the hub did not see the wait begin (it restarted since). */
-function waitingText(s: HubSession, now: number): string {
-	// A plan review carries the time it opened, so its wait is known even when the hub restarted since.
-	const known = s.waitingObserved || (!s.inputRequired && (s.planReview || terminalWaiting(s)));
-	if (!known || !s.waitingSince) return "waiting (age unknown)";
-	return `waiting ${ago(s.waitingSince, now).replace(" ago", "").replace("just now", "<1m")}`;
-}
-
-/** Waiting longest first; sessions whose wait the hub only noticed after a restart sort by when it noticed. */
-function needsOrder(a: HubSession, b: HubSession): number {
-	return (
-		(a.waitingSince ?? Number.MAX_SAFE_INTEGER) - (b.waitingSince ?? Number.MAX_SAFE_INTEGER) ||
-		(a.startedAt ?? 0) - (b.startedAt ?? 0)
-	);
+function machineColor(name: string): string {
+	return machineView(name)?.accent ?? "#6c6c74";
 }
 
 export function SessionsRoute({ active, selected, onSelect }: SessionsRouteProps) {
+	// The hub's own aggregated list (every machine in fleet mode); the header machine filters it here.
 	const sessions = useQuery(["hub-sessions"], ({ signal }) => getHubSessions(signal), {
 		enabled: active,
 		pollMs: REFRESH_MS,
+		scope: "local",
 	});
+	const fleet = useFleet();
+	const picked = useSelectedMachine();
+	const all = !fleet || picked === undefined || picked === ALL_MACHINES;
 	const [notice, setNotice] = useState<Notice | null>(null);
-	const wide = useWide();
-	// On a phone a selected session is a screen of its own: no page header, help or Start card around it.
-	const detailScreen = !wide && selected !== null;
+	const [filter, setFilter] = useState("");
+	const [expanded, setExpanded] = useState<string | null>(null);
+	const [starting, setStarting] = useState(false);
+	const [notesJobs, setNotesJobs] = useState<Record<string, NotesJob>>({});
+	const data = sessions.data;
+	const pollers = useRef(new Map<string, AbortController>());
+	useEffect(() => {
+		const running = pollers.current;
+		return () => {
+			for (const controller of running.values()) controller.abort();
+		};
+	}, []);
 
-	const open = (instanceId: string, view: boolean) => {
+	const names = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const m of fleet ?? []) map.set(m.id, m.name);
+		for (const m of data?.machines ?? []) map.set(m.id, m.name);
+		return map;
+	}, [fleet, data?.machines]);
+	const nameOf = useCallback((s: HubSession) => names.get(s.machine ?? "") ?? s.machine ?? "This machine", [names]);
+
+	const rows = useMemo(() => {
+		const list = data?.sessions ?? [];
+		return list.filter(s => (all || s.machine === picked) && matchesFilter(s, filter, nameOf(s)));
+	}, [data?.sessions, all, picked, filter, nameOf]);
+	const scoped = useMemo(() => (data?.sessions ?? []).filter(s => all || s.machine === picked), [data, all, picked]);
+
+	// The URL names a session id; an execute moves the instance to a new id, so follow the instance.
+	const followed = useRef<{ machine?: string; instanceId: string } | null>(null);
+	const current = useMemo(() => {
+		if (!selected || !data) return undefined;
+		const direct = data.sessions.find(s => sessionKey(s) === selected || s.instanceId === selected);
+		if (direct) return direct;
+		const f = followed.current;
+		return f ? data.sessions.find(s => s.instanceId === f.instanceId && s.machine === f.machine) : undefined;
+	}, [selected, data]);
+	useEffect(() => {
+		if (current) followed.current = { machine: current.machine, instanceId: current.instanceId };
+		if (current && selected && sessionKey(current) !== selected && current.instanceId !== selected)
+			onSelect(sessionKey(current));
+	}, [current, selected, onSelect]);
+
+	const open = (s: HubSession, view: boolean) => {
 		setNotice(null);
-		openSession(instanceId, view).catch((error: unknown) => {
+		openSession(s.instanceId, view, s.machine).catch((error: unknown) => {
 			setNotice({ tone: "bad", text: `Could not open: ${errorText(error)}` });
 			sessions.refetch();
 		});
 	};
 
+	const jobKey = (s: HubSession) => `${s.machine ?? ""}:${s.instanceId}`;
+	const setJob = (key: string, job: NotesJob) => setNotesJobs(jobs => ({ ...jobs, [key]: job }));
+
+	/** Read-only polling of one request; also what "Check again" runs. Never sends the approval again. */
+	const follow = (
+		key: string,
+		instanceId: string,
+		requestId: string,
+		machine: string | undefined,
+		controller: AbortController,
+	) => {
+		setJob(key, { state: "pending", tone: "warn", text: PENDING_TEXT });
+		pollPlanNotes({ instanceId, requestId, machine, signal: controller.signal })
+			.then(outcome => {
+				if (controller.signal.aborted) return;
+				setJob(key, {
+					state: "done",
+					tone:
+						outcome.state === "sent"
+							? "ok"
+							: outcome.state === "unknown" || outcome.state === "unconfirmed"
+								? "warn"
+								: "bad",
+					text: outcomeText(outcome),
+					...(outcome.state === "unknown" || outcome.state === "unconfirmed"
+						? { recheck: { instanceId, requestId, machine } }
+						: {}),
+				});
+				sessions.refetch();
+			})
+			.catch(() => undefined)
+			.finally(() => {
+				if (pollers.current.get(key) === controller) pollers.current.delete(key);
+			});
+	};
+
+	/** The controller is registered before the POST, so leaving the page aborts a late reply's follow-up too. */
+	const claim = (key: string) => {
+		pollers.current.get(key)?.abort();
+		const controller = new AbortController();
+		pollers.current.set(key, controller);
+		return controller;
+	};
+
+	const startNotes = async (
+		s: HubSession,
+		request: { reviewId: string; choice: NotesChoice; notes: string; role?: string },
+	) => {
+		const key = jobKey(s);
+		const requestId = newMessageId("plan");
+		const controller = claim(key);
+		let accepted: PlanNotesAccepted | "in-use";
+		try {
+			accepted = await postPlanNotes(
+				s.instanceId,
+				{ sessionId: s.sessionId ?? "", requestId, ...request },
+				s.machine,
+			);
+		} catch (error) {
+			// Already submitted under this id (a network retry): follow it instead of failing.
+			if (!(error instanceof ApiError && error.code === "request_in_use")) {
+				if (pollers.current.get(key) === controller) pollers.current.delete(key);
+				throw error;
+			}
+			accepted = "in-use";
+		}
+		if (controller.signal.aborted) return;
+		if (accepted !== "in-use" && accepted.notes === "sent") {
+			pollers.current.delete(key);
+			setJob(key, { state: "done", tone: "ok", text: outcomeText({ state: "sent" }) });
+			return;
+		}
+		if (accepted !== "in-use" && accepted.notes === "failed") {
+			pollers.current.delete(key);
+			setJob(key, {
+				state: "done",
+				tone: "bad",
+				text: outcomeText({ state: "failed", reason: accepted.reason ?? "no reason given" }),
+			});
+			return;
+		}
+		follow(key, s.instanceId, requestId, s.machine, controller);
+	};
+
+	const recheckNotes = (s: HubSession) => {
+		const key = jobKey(s);
+		const job = notesJobs[key];
+		if (!job?.recheck) return;
+		const { instanceId, requestId, machine } = job.recheck;
+		follow(key, instanceId, requestId, machine, claim(key));
+	};
+
+	const unreachable = (data?.machines ?? []).filter(m => !m.ok && (all || m.id === picked));
+	const held = (data?.machines ?? []).filter(m => m.ok && m.stale === true && (all || m.id === picked));
+	// Under All machines every machine gets a group: one without sessions says so instead of vanishing. With no
+	// sessions anywhere the table's own empty state shows instead, with its Start action.
+	const emptyGroups =
+		fleet && all && data && !filter && scoped.length > 0
+			? (data.machines ?? fleet.map((m): HubSessionsMachine => ({ id: m.id, name: m.name, ok: m.ok })))
+					.filter(m => !scoped.some(s => s.machine === m.id))
+					.map(m => ({
+						key: m.id,
+						label: (
+							<MachineCell
+								name={m.name}
+								color={machineColor(m.name)}
+								reachable={m.ok !== false}
+								lastKnown={m.ok !== false && m.stale === true}
+								since={m.staleSince}
+							/>
+						),
+						note:
+							m.ok === false
+								? `${m.name} is unreachable; its sessions are unknown`
+								: `${m.name}: no live sessions`,
+					}))
+			: undefined;
+	const down = current ? machineDown(current, data?.machines) : null;
+	const live = !sessions.error && !sessions.stale;
+
 	return (
 		<div className="page">
-			{!detailScreen && (
-				<PageHeader
-					title="Sessions"
-					description={
-						sessions.data
-							? `Every omp session on this Mac that shares through Collab. Updated ${new Date(sessions.data.now).toLocaleTimeString()} · refreshes every 5 seconds.`
-							: "Every omp session on this Mac that shares through Collab."
-					}
+			<PageHeader
+				title="Sessions"
+				description={
+					data
+						? `Live omp sessions ${fleet ? (all ? "on every machine" : `on ${names.get(picked ?? "") ?? picked}`) : "on this machine"}. Updated ${new Date(data.now).toLocaleTimeString()} · refreshes every 5 seconds.`
+						: `Live omp sessions ${fleet ? "on every machine" : "on this machine"}.`
+				}
+				actions={
+					<>
+						<a className="btn" data-variant="ghost" href="#/history">
+							Old sessions
+						</a>
+						<button type="button" className="btn" data-variant="primary" onClick={() => setStarting(true)}>
+							<Plus size={14} /> Start a session
+						</button>
+					</>
+				}
+			/>
+			{unreachable.length > 0 && (
+				<p className="sd-unreachable" role="status">
+					{unreachable
+						.map(
+							m =>
+								`${m.name} is unreachable${m.staleSince ? ` since ${new Date(m.staleSince).toLocaleTimeString()}` : ""}`,
+						)
+						.join("; ")}
+					. {unreachable.length === 1 ? "Its" : "Their"} rows are the last known state, greyed, with every control
+					off.
+				</p>
+			)}
+			{held.length > 0 && (
+				<p className="dim" role="status">
+					{held
+						.map(
+							m =>
+								`${m.name} missed its last check${m.staleSince ? ` (last answer ${new Date(m.staleSince).toLocaleTimeString()})` : ""}`,
+						)
+						.join("; ")}
+					. {held.length === 1 ? "Its" : "Their"} rows are the last known state; controls stay on while the hub
+					reconnects.
+				</p>
+			)}
+			<NoticeLine notice={notice} />
+			<Table<HubSession>
+				variant="std"
+				title="Live sessions"
+				subtitle={
+					data
+						? sessionsSubtitle(
+								scoped,
+								(data.machines ?? []).filter(m => all || m.id === picked),
+								rows.length,
+							)
+						: undefined
+				}
+				tools={
+					<SearchInput value={filter} onChange={setFilter} placeholder="Filter sessions" label="Filter sessions" />
+				}
+				rows={rows}
+				rowKey={rowKey}
+				loading={!data && !sessions.error}
+				error={!data && sessions.error ? `Could not load the sessions: ${sessions.error.message}` : undefined}
+				onRetry={sessions.refetch}
+				empty={
+					filter ? (
+						<EmptyState title="No session matches" hint={`Nothing matches “${filter}”.`} />
+					) : (
+						<EmptyState title="No live omp sessions" hint="Start one, or run omp on a machine." />
+					)
+				}
+				emptyAction={
+					filter ? (
+						<button type="button" className="btn" data-size="sm" onClick={() => setFilter("")}>
+							Clear the filter
+						</button>
+					) : (
+						<button type="button" className="btn" data-size="sm" onClick={() => setStarting(true)}>
+							Start a session
+						</button>
+					)
+				}
+				initialSort={{ key: "started", dir: "desc" }}
+				emptyGroups={emptyGroups}
+				pinned={s => !s.stale && needsYou(s)}
+				stale={s => Boolean(s.stale)}
+				selectedKey={current ? rowKey(current) : null}
+				onRowClick={s => onSelect(sessionKey(s))}
+				onToggle={s => setExpanded(on => (on === rowKey(s) ? null : rowKey(s)))}
+				group={
+					fleet && all
+						? s => {
+								const m = data?.machines?.find(item => item.id === s.machine);
+								const name = nameOf(s);
+								return {
+									key: s.machine ?? "",
+									label: (
+										<>
+											<MachineCell
+												name={name}
+												color={machineColor(name)}
+												reachable={m?.ok !== false}
+												lastKnown={machineHeld(s, data?.machines)}
+												since={m?.staleSince}
+											/>
+										</>
+									),
+								};
+							}
+						: undefined
+				}
+				expanded={s =>
+					expanded === rowKey(s) ? (
+						<SessionSubagents
+							session={s}
+							machineName={nameOf(s)}
+							down={machineDown(s, data?.machines) !== null}
+							parentLive={live && !s.stale}
+						/>
+					) : null
+				}
+				columns={[
+					{
+						key: "session",
+						header: "Session",
+						sort: s => sessionDisplayName(s).toLowerCase(),
+						render: s => {
+							const status = sessionStatus(s);
+							const sub = [
+								s.herdr?.workspace ? "herdr" : null,
+								s.herdr?.tab ?? null,
+								s.agentsRunning
+									? `${s.agentsRunning} subagent${s.agentsRunning === 1 ? "" : "s"} running`
+									: null,
+								s.planReview ? "plan to approve" : null,
+							].filter(Boolean);
+							return (
+								<LabelCell
+									lead={
+										<span
+											className="sd-dot"
+											data-tone={status.tone}
+											data-live={status.live}
+											aria-hidden="true"
+										/>
+									}
+									primary={sessionDisplayName(s)}
+									secondary={sub.length ? sub.join(" · ") : (s.workspace ?? "Other")}
+								/>
+							);
+						},
+					},
+					...(fleet
+						? [
+								{
+									key: "machine",
+									width: 160,
+									header: "Machine",
+									kind: "machine" as const,
+									priority: 2 as const,
+									sort: (s: HubSession) => nameOf(s),
+									render: (s: HubSession) => (
+										<MachineCell
+											name={shortMachineName(nameOf(s))}
+											color={machineColor(nameOf(s))}
+											reachable={machineDown(s, data?.machines) === null}
+											lastKnown={machineHeld(s, data?.machines)}
+											since={data?.machines?.find(m => m.id === s.machine)?.staleSince}
+										/>
+									),
+								},
+							]
+						: []),
+					{
+						key: "project",
+						width: 170,
+						header: "Project",
+						priority: 2,
+						sort: s => projectFolder(s),
+						render: s => <LabelCell primary={projectFolder(s) || "—"} secondary={s.workspace ?? "Other"} />,
+					},
+					{
+						key: "status",
+						width: 120,
+						header: "Status",
+						kind: "status",
+						sort: s => sessionStatus(s).label,
+						render: s => {
+							const status = sessionStatus(s);
+							return (
+								<StatusCell tone={status.tone} live={status.live}>
+									{status.label}
+								</StatusCell>
+							);
+						},
+					},
+					{
+						key: "model",
+						width: 120,
+						header: "Model",
+						kind: "model",
+						priority: 3,
+						sort: s => s.model?.id ?? null,
+						render: s =>
+							s.model?.id ? (
+								<span title={`${s.model.provider ?? ""}/${s.model.id}`}>
+									<ModelCell name={shortModelName(s.model.id)} color={providerColor(s.model.provider)} />
+								</span>
+							) : (
+								"—"
+							),
+					},
+					{
+						key: "started",
+						width: 110,
+						header: "Started",
+						kind: "date",
+						priority: 3,
+						sort: s => s.startedAt ?? null,
+						render: s => (s.startedAt ? <RelativeDateCell value={s.startedAt} now={data?.now} /> : "—"),
+					},
+					{
+						key: "activity",
+						width: 120,
+						header: "Last activity",
+						kind: "date",
+						priority: 2,
+						sort: s => s.lastActivityAt ?? null,
+						render: s =>
+							s.lastActivityAt ? (
+								<RelativeDateCell value={s.lastActivityAt} now={data?.now} />
+							) : (
+								<span
+									title={
+										s.lastActivityAt === undefined
+											? "Update this machine's hub to show it"
+											: "Not recorded yet"
+									}
+								>
+									—
+								</span>
+							),
+					},
+					{
+						key: "cost",
+						width: 110,
+						header: "Cost so far",
+						kind: "money",
+						sort: s => s.costSoFar ?? null,
+						render: s =>
+							typeof s.costSoFar === "number" ? (
+								formatCost(s.costSoFar)
+							) : (
+								<span
+									title={
+										s.costSoFar === undefined ? "Update this machine's hub to show it" : "Not recorded yet"
+									}
+								>
+									—
+								</span>
+							),
+					},
+				]}
+			/>
+			{selected && data && !current && (
+				<Modal open title="Session ended" onClose={() => onSelect(null)} cancelLabel="Back to sessions">
+					<p>
+						It is no longer running, or it stopped sharing. Its transcript stays on the machine: find it in Old
+						sessions.
+					</p>
+				</Modal>
+			)}
+			{current && (
+				<SessionDrawer
+					key={`${current.machine ?? ""}:${current.instanceId}`}
+					session={current}
+					now={data?.now ?? Date.now()}
+					machineName={nameOf(current)}
+					down={down}
+					active={active}
+					onClose={() => onSelect(null)}
+					onOpen={open}
+					onChanged={sessions.refetch}
+					onEnded={n => {
+						setNotice(n);
+						onSelect(null);
+					}}
+					notesJob={notesJobs[jobKey(current)] ?? null}
+					startNotes={startNotes}
+					onRecheckNotes={() => recheckNotes(current)}
 				/>
 			)}
-			{!detailScreen && (
-				<Help summary="What can I do here?">
-					<p>
-						<b>Needs you</b> means it is waiting for your answer; <b>Working</b> means a turn is running (or
-						subagents it started still are); <b>Idle</b> means it is waiting for a prompt. Needs you sessions are
-						listed first, longest waiting on top. The hub only shows them: answer or approve inside the session
-						with Open &amp; control.
-					</p>
-					<p>
-						A <b>Plan to approve</b> badge means the session finished a plan and waits for your answer. Open the
-						session here to read the plan and answer with the same choices the terminal offers: approve and
-						execute, approve and compact, approve and keep context, refine with feedback, or save and quit. Edits
-						made inside the terminal's review aren't shown here, and sessions started before plan support was
-						installed need a restart first.
-					</p>
-					<p>
-						<b>Open &amp; control</b> opens the session in a new tab where you can read it, send prompts, answer
-						its questions, approve tools and stop a running turn. <b>Watch</b> opens the same view read-only: you
-						see everything but can't type or press anything that changes the session. Use it when you only want to
-						look, or to show someone.
-					</p>
-					<p>
-						<b>Stop</b> (shown while it works) interrupts the running turn, like pressing Esc at the Mac; the
-						session stays open. <b>Rename</b> changes the session's name. <b>Kill</b> ends the session's omp
-						process, and any subagents it is running stop with it. Its transcript stays on the Mac: resume it
-						there later with <code>omp --resume</code>. Every Stop, Rename and Kill is written to the hub's audit
-						log.
-					</p>
-					<p>
-						Stop and Rename need a small omp extension that sessions load when they start. A session that was
-						already running when it was installed shows "Restart this session to enable Stop and Rename"; Kill
-						works for every session.
-					</p>
-					<p>
-						Both Open and Watch use this Mac's own relay, reachable only inside your tailnet and only from
-						browsers you paired. The conversation is end-to-end encrypted between the session and your browser;
-						the relay only passes sealed messages along.
-					</p>
-					<p>
-						<b>Still on the public relay</b>: the session started before the switch to our relay and still shares
-						through omp's public server (my.omp.sh). Its links are never opened from here, so its Open and Watch
-						buttons are off. To fix it, at the Mac in that session run <code>/collab stop</code>, then{" "}
-						<code>/collab</code>; it moves to this Mac's relay and the buttons come back within a few seconds.
-					</p>
-					<p>
-						The <b>Session</b> card changes the model, thinking level and plan, goal and loop mode, and compacts
-						the context; each change asks first and is written to the audit log (never the instructions or
-						objective text). A session started before the session-control plugin was updated shows a restart hint
-						instead. Each link is fetched fresh when you click, so it always points at the session's current room.
-					</p>
-					<p>
-						<b>Waiting in terminal</b> means the hub read a dialog off the session's terminal screen (a Yes/No
-						question, a list to pick from, a text prompt or a sign-in wait) that omp does not share through Open
-						&amp; control. It is detected from the screen, so it can be late or, rarely, wrong. The{" "}
-						<b>Terminal</b> panel answers it: turn on Control terminal to read the screen, then use the key pad or
-						type one line. Text goes to whatever has focus in the terminal, and digits can pick options. It locks
-						again when you switch session, leave the page or anything fails. If it says delivery is uncertain,
-						read the screen before sending again: nothing is ever resent automatically.
-					</p>
-				</Help>
-			)}
-
-			<NoticeLine notice={notice} />
-			{!detailScreen && <QuotaCard active={active} wide={wide} />}
-			<QueryView
-				query={sessions}
-				skeleton={<TableSkeleton rows={3} />}
-				isEmpty={data => data.sessions.length === 0 && !selected}
-				empty={
-					<Card>
-						<EmptyState
-							title="No live omp sessions"
-							hint={
-								<>
-									Start one below, or run <code>omp</code> on the Mac.
-								</>
-							}
-						/>
-					</Card>
-				}
-			>
-				{data => (
-					<SessionsView
-						data={data}
-						selected={selected}
-						wide={wide}
-						onSelect={onSelect}
-						onOpen={open}
-						onChanged={sessions.refetch}
-						onEnded={setNotice}
-						active={active}
-					/>
-				)}
-			</QueryView>
-
-			{!detailScreen && <StartSession active={active} onStarted={sessions.refetch} />}
+			<StartDialog
+				open={starting}
+				active={active}
+				fleet={fleet}
+				header={all ? null : (picked ?? null)}
+				onClose={() => setStarting(false)}
+				onStarted={sessions.refetch}
+			/>
 		</div>
 	);
 }
 
-function SessionsView({
-	data,
-	selected,
-	wide,
-	onSelect,
-	onOpen,
-	onChanged,
-	onEnded,
-	active,
-}: {
-	data: HubSessions;
-	selected: string | null;
-	wide: boolean;
-	onSelect: (key: string | null) => void;
-	onOpen: (instanceId: string, view: boolean) => void;
-	onChanged: () => void;
-	onEnded: (notice: Notice) => void;
-	active: boolean;
-}) {
-	const needs = useMemo(() => data.sessions.filter(needsYou).sort(needsOrder), [data.sessions]);
-	const rest = useMemo(() => data.sessions.filter(s => !needsYou(s)).sort(sessionOrder), [data.sessions]);
-	const current = selected ? data.sessions.find(s => sessionKey(s) === selected) : undefined;
-	const showList = wide || !selected;
-	const showDetail = wide || selected !== null;
-
-	return (
-		<div className="sess-split" data-wide={wide}>
-			{showList && (
-				<nav className="sess-list" aria-label="Sessions">
-					{data.sessions.length === 0 && <p className="micro">No live omp sessions.</p>}
-					{needs.length > 0 && (
-						<div className="sess-group" data-needs="true">
-							<h3 className="sess-group-title">Needs you · {needs.length}</h3>
-							{needs.map(s => (
-								<SessionRow
-									key={s.instanceId}
-									session={s}
-									now={data.now}
-									selected={sessionKey(s) === selected}
-									onSelect={onSelect}
-								/>
-							))}
-						</div>
-					)}
-					{rest.length > 0 && (
-						<div className="sess-group">
-							{needs.length > 0 && <h3 className="sess-group-title">Other sessions</h3>}
-							{rest.map(s => (
-								<SessionRow
-									key={s.instanceId}
-									session={s}
-									now={data.now}
-									selected={sessionKey(s) === selected}
-									onSelect={onSelect}
-								/>
-							))}
-						</div>
-					)}
-				</nav>
-			)}
-			{showDetail && (
-				<section className="sess-detail" aria-label="Session">
-					{current ? (
-						<SessionDetail
-							key={current.instanceId}
-							session={current}
-							now={data.now}
-							showBack={!wide}
-							onBack={() => onSelect(null)}
-							onOpen={onOpen}
-							onChanged={onChanged}
-							onEnded={onEnded}
-							active={active}
-						/>
-					) : selected ? (
-						<Card>
-							<EmptyState
-								title="Session ended"
-								hint="It is no longer running, or it stopped sharing. Its transcript stays on the Mac."
-							/>
-							<div className="hub-actions">
-								<button type="button" className="btn" data-variant="accent" onClick={() => onSelect(null)}>
-									<ArrowLeft size={14} /> Back to sessions
-								</button>
-							</div>
-						</Card>
-					) : (
-						<Card>
-							<EmptyState title="Pick a session" hint="Its details and actions show here." />
-						</Card>
-					)}
-				</section>
-			)}
-		</div>
-	);
-}
-
-function SessionRow({
-	session: s,
-	now,
-	selected,
-	onSelect,
+/**
+ * A live row's subagents. An unreachable machine is not asked (a held one is, without `parentLive`); any request gives up after
+ * `SUBAGENTS_TIMEOUT_MS` with an error and Try again. When `parentLive` flips, the list on screen stays until the
+ * new answer lands, so a flapping machine never drops it back to a skeleton.
+ */
+function SessionSubagents({
+	session,
+	machineName,
+	down,
+	parentLive,
 }: {
 	session: HubSession;
-	now: number;
-	selected: boolean;
-	onSelect: (key: string) => void;
+	machineName: string;
+	down: boolean;
+	parentLive: boolean;
 }) {
-	const state = sessionState(s);
-	const sub = [s.workspace ?? "Other", projectFolder(s), needsYou(s) ? waitingText(s, now) : null].filter(Boolean);
-	return (
-		<button
-			type="button"
-			className="sess-row"
-			data-selected={selected}
-			aria-current={selected ? "true" : undefined}
-			onClick={() => onSelect(sessionKey(s))}
-		>
-			<span className="sess-row-main">
-				<span className="sess-row-name truncate">{sessionDisplayName(s)}</span>
-				<span className="sess-row-sub truncate">{sub.join(" · ")}</span>
-			</span>
-			<span className="sess-row-badges">
-				<Badge tone={state.tone}>{state.label}</Badge>
-				{s.planReview && <Badge tone="accent">Plan to approve</Badge>}
-				{terminalWaiting(s) && (
-					<Badge tone="warn" title={TERMINAL_WAITING_TITLE}>
-						{TERMINAL_WAITING_LABEL}
-					</Badge>
-				)}
-			</span>
-		</button>
+	const list = useQuery(
+		["live-subagents", session.machine ?? "", session.sessionId ?? "", parentLive],
+		async ({ signal }) => ({ items: await getSessionSubagents(session, parentLive, signal) }),
+		// One expanded row's detail: the page's own refresh is the sessions list.
+		{ scope: "local", enabled: !down, pollMs: 15_000, countsAsPagePolling: false },
 	);
-}
-
-function SessionDetail({
-	session: s,
-	now,
-	showBack,
-	onBack,
-	onOpen,
-	onChanged,
-	onEnded,
-	active,
-}: {
-	session: HubSession;
-	now: number;
-	showBack: boolean;
-	onBack: () => void;
-	onOpen: (instanceId: string, view: boolean) => void;
-	onChanged: () => void;
-	onEnded: (notice: Notice) => void;
-	active: boolean;
-}) {
-	const state = sessionState(s);
-	const relay = RELAY_LABEL[s.relay ?? "unknown"];
-	const isPublic = s.relay === "public";
-	const place = herdrPlace(s);
-	const waiting = terminalWaiting(s);
-	const terminalOn = s.terminal?.available === true && Boolean(s.sessionId);
-	const ctl = useSessionControlState(s, onChanged, onEnded);
-	/** Counts successful terminal sends: the Session card re-reads what the session reports after each. */
-	const [sent, setSent] = useState(0);
-	const facts = [
-		s.model?.id,
-		s.startedAt ? `started ${ago(s.startedAt, now)}` : null,
-		s.participants !== undefined ? `${s.participants} connected` : null,
-		s.pid !== undefined ? `pid ${s.pid}` : null,
-	].filter(Boolean);
-	return (
-		<div className="sess-detail-inner">
-			{showBack && (
-				<button type="button" className="btn sess-back" data-variant="ghost" onClick={onBack}>
-					<ArrowLeft size={16} /> Sessions
-				</button>
-			)}
-			<div className="sess-actionbar">
-				<button
-					type="button"
-					className="btn"
-					data-variant="accent"
-					disabled={isPublic}
-					title={isPublic ? "Still on the public relay" : "Open in a new tab with full control"}
-					onClick={() => onOpen(s.instanceId, false)}
-				>
-					<SquareTerminal size={14} /> Open &amp; control
-				</button>
-				<button
-					type="button"
-					className="btn"
-					disabled={isPublic}
-					title={isPublic ? "Still on the public relay" : "Open read-only in a new tab"}
-					onClick={() => onOpen(s.instanceId, true)}
-				>
-					<Eye size={14} /> Watch
-				</button>
-				{ctl.controls.showStop && (
-					<button
-						type="button"
-						className="btn"
-						disabled={!ctl.controls.stop.enabled || ctl.pending !== null}
-						title={ctl.controls.stop.reason ?? "Interrupt the running turn; the session stays open"}
-						onClick={ctl.stop}
-					>
-						<Square size={13} /> {ctl.pending === "Stop" ? "Stopping…" : "Stop"}
-					</button>
-				)}
-			</div>
-			<Card
-				title={<span className="truncate">{sessionDisplayName(s)}</span>}
-				description={(s.cwd ?? "").replace(/^\/Users\/[^/]+/, "~")}
-				actions={<Badge tone={state.tone}>{state.label}</Badge>}
-			>
-				<div className="hub-session-meta">
-					<Badge tone="neutral">{s.workspace ?? "Other"}</Badge>
-					{needsYou(s) && <Badge tone="warn">{waitingText(s, now)}</Badge>}
-					{s.planReview && <Badge tone="accent">Plan to approve</Badge>}
-					{waiting && (
-						<Badge tone="warn" title={TERMINAL_WAITING_TITLE}>
-							{TERMINAL_WAITING_LABEL}
-						</Badge>
-					)}
-					<Badge tone={relay.tone}>{relay.label}</Badge>
-					{s.relayConnected === false && <Badge tone="bad">Relay offline</Badge>}
-					{place && <Badge tone="neutral">{place}</Badge>}
-					<span className="micro">{facts.join(" · ")}</span>
-				</div>
-				{s.inputRequired && (
-					<p className="micro">Answer or approve inside the session: choose Open &amp; control.</p>
-				)}
-				{waiting && (
-					<p className="micro">
-						Waiting in terminal: <span className="term-line">{waiting.line}</span>. Answer it in the Terminal
-						panel below, or choose Open &amp; control.
-					</p>
-				)}
-				{s.planControl === "restart_needed" && (
-					<p className="hub-warn">{terminalOn ? RESTART_FOR_PLAN_OR_TERMINAL : RESTART_FOR_PLAN}</p>
-				)}
-				{isPublic && (
-					<p className="hub-warn">
-						Still on the public relay, so it can't be opened from here. Fix: in that session run{" "}
-						<code>/collab stop</code>, then <code>/collab</code>.
-					</p>
-				)}
-				<ManagePanel session={s} ctl={ctl} />
-			</Card>
-			{s.planControl === "supported" && s.sessionId && <PlanReviewPanel session={s} onChanged={onChanged} />}
-			{s.sessionId && <SessionCommandsPanel session={s} onChanged={onChanged} refreshToken={sent} active={active} />}
-			{terminalOn && <TerminalPanel session={s} active={active} onSent={() => setSent(n => n + 1)} />}
-		</div>
-	);
-}
-
-type Panel = "rename" | "kill" | null;
-
-function useSessionControlState(s: HubSession, onChanged: () => void, onEnded: (notice: Notice) => void) {
-	const controls = sessionControls(s);
-	const name = sessionDisplayName(s);
-	const [panel, setPanel] = useState<Panel>(null);
-	const [pending, setPending] = useState<string | null>(null);
-	const [notice, setNotice] = useState<Notice | null>(null);
-	const [newName, setNewName] = useState("");
-	const [typed, setTyped] = useState("");
-	const [forceOffered, setForceOffered] = useState(false);
-	const [forceConfirming, setForceConfirming] = useState(false);
-	const sessionId = s.sessionId ?? "";
-
-	const run = async (label: string, action: () => Promise<void>) => {
-		setPending(label);
-		setNotice(null);
-		try {
-			await action();
-		} catch (error) {
-			setNotice({ tone: "bad", text: `${label} failed: ${errorText(error)}` });
-		} finally {
-			setPending(null);
-			onChanged();
-		}
-	};
-
-	const stop = () =>
-		run("Stop", async () => {
-			const r = await stopHubSession(sessionId);
-			setNotice({
-				tone: "ok",
-				text:
-					r.outcome === "stopped"
-						? "Stopped the running turn. The session is still open."
-						: "Nothing was running.",
-			});
-		});
-
-	const rename = (event: FormEvent) => {
-		event.preventDefault();
-		run("Rename", async () => {
-			const r = await renameHubSession(sessionId, newName);
-			setPanel(null);
-			setNotice({ tone: "ok", text: `Renamed to “${r.name ?? newName.trim()}”.` });
-		});
-	};
-
-	const kill = (event: FormEvent) => {
-		event.preventDefault();
-		run("Kill", async () => {
-			const r = await killHubSession(sessionId, typed);
-			if (r.outcome === "exited") {
-				setPanel(null);
-				// The card disappears with the session, so the outcome is shown above the list.
-				onEnded({
-					tone: "ok",
-					text: `“${name}” has ended. Its transcript is kept: resume it at the Mac with omp --resume.`,
-				});
-				return;
-			}
-			setForceOffered(true);
-			setNotice({
-				tone: "bad",
-				text: "It is still running 10 seconds after being asked to end. Wait a little and refresh, or use Force kill.",
-			});
-		});
-	};
-
-	const forceKill = () =>
-		run("Force kill", async () => {
-			const r = await forceKillHubSession(sessionId, typed);
-			setForceConfirming(false);
-			if (r.outcome === "force_exited") {
-				setPanel(null);
-				setForceOffered(false);
-				onEnded({
-					tone: "ok",
-					text: `“${name}” was force-killed. Its transcript up to that moment is kept: resume it with omp --resume.`,
-				});
-			} else {
-				setNotice({ tone: "bad", text: "It is still running even after Force kill; check it at the Mac." });
-			}
-		});
-
-	const toggle = (next: Panel) => {
-		setNotice(null);
-		setForceOffered(false);
-		setForceConfirming(false);
-		setPanel(panel === next ? null : next);
-		if (next === "rename") setNewName(s.sessionName ?? "");
-		if (next === "kill") setTyped("");
-	};
-
-	return {
-		controls,
-		name,
-		panel,
-		setPanel,
-		pending,
-		notice,
-		newName,
-		setNewName,
-		typed,
-		setTyped,
-		forceOffered,
-		forceConfirming,
-		setForceConfirming,
-		stop,
-		rename,
-		kill,
-		forceKill,
-		toggle,
-	};
-}
-
-type Controls = ReturnType<typeof useSessionControlState>;
-
-/** Rename and Kill (with Force kill only after a Kill that did not end the session); Stop lives in the action bar. */
-function ManagePanel({ session: s, ctl }: { session: HubSession; ctl: Controls }) {
-	const {
-		controls,
-		name,
-		panel,
-		setPanel,
-		pending,
-		notice,
-		newName,
-		setNewName,
-		typed,
-		setTyped,
-		forceOffered,
-		forceConfirming,
-		setForceConfirming,
-		rename,
-		kill,
-		forceKill,
-		toggle,
-	} = ctl;
-	const extensionReason = controls.rename.enabled ? null : controls.rename.reason;
-	return (
-		<div className="hub-controls">
-			<div className="hub-actions">
-				<button
-					type="button"
-					className="btn"
-					disabled={!controls.rename.enabled || pending !== null}
-					title={controls.rename.reason ?? "Change this session's name"}
-					aria-expanded={panel === "rename"}
-					onClick={() => toggle("rename")}
-				>
-					<Pencil size={13} /> Rename
-				</button>
-				<button
-					type="button"
-					className="btn"
-					data-variant="danger"
-					disabled={!controls.kill.enabled || pending !== null}
-					title={controls.kill.reason ?? "End this session's omp process"}
-					aria-expanded={panel === "kill"}
-					onClick={() => toggle("kill")}
-				>
-					<Power size={13} /> Kill
+	if (down) return <p className="sd-hint">{subagentsUnavailable(machineName)}</p>;
+	if (list.error)
+		return (
+			<div className="sd-row">
+				<p className="sd-hint" data-tone="bad" role="alert" title={list.error.message}>
+					{subagentsFailure(machineName, list.error.message, list.polling)}
+				</p>
+				<button type="button" className="btn" data-size="sm" onClick={list.refetch}>
+					Try again
 				</button>
 			</div>
-			{extensionReason && <p className="micro hub-reason">{extensionReason}</p>}
-			{panel === "rename" && (
-				<form className="hub-inline-form" onSubmit={rename}>
-					<label className="micro" htmlFor={`rename-${s.instanceId}`}>
-						New name (1–{MAX_NAME_CHARS} characters, no invisible characters)
-					</label>
-					<div className="hub-inline-row">
-						<input
-							id={`rename-${s.instanceId}`}
-							className="input"
-							value={newName}
-							maxLength={MAX_NAME_CHARS}
-							onChange={event => setNewName(event.target.value)}
-						/>
-						<button
-							type="submit"
-							className="btn"
-							data-variant="primary"
-							disabled={nameProblem(newName) !== null || pending !== null}
-							title={nameProblem(newName) ?? undefined}
-						>
-							{pending === "Rename" ? "Saving…" : "Save"}
-						</button>
-						<button type="button" className="btn" data-variant="ghost" onClick={() => setPanel(null)}>
-							Cancel
-						</button>
-					</div>
-				</form>
-			)}
-			{panel === "kill" && (
-				<form className="hub-inline-form hub-danger" onSubmit={kill}>
-					<p>
-						Kill ends this session's omp process, and any subagents it is running stop with it. Its transcript
-						stays on the Mac: resume it later with <code>omp --resume</code>.
-					</p>
-					<label className="micro" htmlFor={`kill-${s.instanceId}`}>
-						To confirm, type the session's name <b>{name}</b>
-						{s.sessionName ? " (or its project folder's name)" : ""}
-					</label>
-					<div className="hub-inline-row">
-						<input
-							id={`kill-${s.instanceId}`}
-							className="input"
-							value={typed}
-							autoComplete="off"
-							onChange={event => setTyped(event.target.value)}
-						/>
-						<button
-							type="submit"
-							className="btn"
-							data-variant="danger"
-							disabled={!killConfirmMatches(s, typed) || pending !== null}
-						>
-							{pending === "Kill" ? "Ending…" : "Kill session"}
-						</button>
-						<button type="button" className="btn" data-variant="ghost" onClick={() => setPanel(null)}>
-							Cancel
-						</button>
-					</div>
-					{forceOffered && !forceConfirming && (
-						<button
-							type="button"
-							className="btn"
-							data-variant="danger"
-							disabled={pending !== null}
-							onClick={() => setForceConfirming(true)}
-						>
-							Force kill…
-						</button>
-					)}
-					{forceConfirming && (
-						<div className="hub-inline-form">
-							<p>
-								Force kill stops it at once, without letting it finish writing or close its subagents cleanly.
-								Only use it when Kill did not work.
-							</p>
-							<div className="hub-inline-row">
-								<button
-									type="button"
-									className="btn"
-									data-variant="danger"
-									disabled={!killConfirmMatches(s, typed) || pending !== null}
-									onClick={forceKill}
-								>
-									{pending === "Force kill" ? "Force killing…" : "Yes, force kill"}
-								</button>
-								<button
-									type="button"
-									className="btn"
-									data-variant="ghost"
-									onClick={() => setForceConfirming(false)}
-								>
-									No
-								</button>
-							</div>
-						</div>
-					)}
-				</form>
-			)}
-			<NoticeLine notice={notice} />
+		);
+	if (list.data === null) return <TableSkeleton rows={2} />;
+	if (list.data.items === null)
+		return (
+			<p className="sd-hint">The transcript is not indexed yet; the list shows once the machine's stats catch up.</p>
+		);
+	return (
+		<div className="sd-nested">
+			<Table<SessionSubagent>
+				variant="std"
+				dense
+				rows={list.data.items}
+				rowKey={a => a.id}
+				limit={10}
+				empty={<EmptyState title="No subagents" hint="This session has not started any." />}
+				columns={[
+					{
+						key: "name",
+						header: "Subagent",
+						render: a => <LabelCell primary={a.title ?? a.agent ?? a.id} secondary={a.agent ?? undefined} />,
+					},
+					{
+						key: "model",
+						header: "Model",
+						kind: "model",
+						priority: 2,
+						render: a =>
+							a.models.length ? (
+								<ModelCell
+									name={shortModelName(a.models[0].split("/").pop())}
+									color={providerColor(a.models[0].split("/")[0])}
+								/>
+							) : (
+								"—"
+							),
+					},
+					{
+						key: "started",
+						header: "Started",
+						kind: "date",
+						priority: 3,
+						render: a => <RelativeDateCell value={a.startedAt} />,
+					},
+					{
+						key: "duration",
+						header: "Duration",
+						kind: "duration",
+						priority: 2,
+						render: a => formatCompactDuration(a.durationMs),
+					},
+					{
+						key: "cost",
+						header: "Cost",
+						kind: "money",
+						render: a => formatCost(a.costTotal),
+					},
+					{
+						key: "status",
+						header: "Status",
+						kind: "status",
+						render: a => (
+							<span className="sd-row">
+								<StatusCell tone={SUBAGENT_STATUS[a.status].tone} live={a.status === "running"}>
+									{SUBAGENT_STATUS[a.status].label}
+								</StatusCell>
+								{a.toolErrors > 0 && (
+									<span className="sd-hint" data-tone="bad">
+										{a.toolErrors} tool error{a.toolErrors === 1 ? "" : "s"}
+									</span>
+								)}
+							</span>
+						),
+					},
+				]}
+			/>
 		</div>
 	);
 }
@@ -784,27 +709,79 @@ function ManagePanel({ session: s, ctl }: { session: HubSession; ctl: Controls }
 function startedText(project: HubProject, r: HubStarted): string {
 	const where = r.herdrWorkspace ? `herdr: ${r.herdrWorkspace} › ${r.tab ?? "omp"}` : "a new herdr tab";
 	return r.instanceId
-		? `Started ${project.name} in ${where}. It is listed above: click Open & control to talk to it.`
-		: `Started ${project.name} in ${where}; it is not sharing yet and shows up above in a few seconds.`;
+		? `Started ${project.name} in ${where}. It is listed now: click its row for its controls.`
+		: `Started ${project.name} in ${where}; it is not sharing yet and shows up in a few seconds.`;
 }
 
-function StartSession({ active, onStarted }: { active: boolean; onStarted: () => void }) {
-	const projects = useQuery(["hub-projects"], ({ signal }) => getHubProjects(signal), { enabled: active });
+/** The Start dialog: on the header machine, or (under All machines) the machine picked first. */
+function StartDialog({
+	open,
+	active,
+	fleet,
+	header,
+	onClose,
+	onStarted,
+}: {
+	open: boolean;
+	active: boolean;
+	fleet: FleetMachine[] | null;
+	header: string | null;
+	onClose: () => void;
+	onStarted: () => void;
+}) {
+	const [picked, setPicked] = useState<string | null>(null);
+	const chosen = header ?? picked;
+	const startOn = fleet ? (fleet.find(m => m.id === chosen && m.ok)?.id ?? null) : "";
+	const machineName = fleet?.find(m => m.id === startOn)?.name ?? "this machine";
+	const enabled = open && active && startOn !== null;
+	const projects = useQuery(["hub-projects", startOn], ({ signal }) => getHubProjects(startOn ?? "", signal), {
+		enabled,
+		scope: "local",
+		// Never show another machine's projects while this one's list loads: Start would send a foreign path.
+		retain: false,
+	});
+	const parents = useQuery(["project-parents", startOn], ({ signal }) => getProjectParents(startOn ?? "", signal), {
+		enabled,
+		scope: "local",
+		retain: false,
+	});
+	const [newFolder, setNewFolder] = useState(false);
+	const [parent, setParent] = useState("");
+	const [folderName, setFolderName] = useState("");
+	const [initializeGit, setInitializeGit] = useState(true);
+	const projectsReady = projects.data !== null && !projects.error;
 	const [query, setQuery] = useState("");
 	const [starting, setStarting] = useState<string | null>(null);
 	const [notice, setNotice] = useState<Notice | null>(null);
 
+	// Everything chosen in the form belongs to one machine: a new target starts it over.
+	useEffect(() => {
+		setNewFolder(false);
+		setParent("");
+		setFolderName("");
+		setInitializeGit(true);
+		setQuery("");
+		setNotice(null);
+	}, [startOn]);
+	const parentChoices = useMemo(
+		() => [...new Set([...(parents.data?.roots ?? []), ...(parents.data?.parents ?? [])])],
+		[parents.data],
+	);
+	const parentOk = parent !== "" && parentChoices.includes(parent);
+
 	const matches = useMemo(() => {
 		const q = query.trim().toLowerCase();
-		const all = projects.data?.projects ?? [];
-		return all.filter(p => !q || p.label.toLowerCase().includes(q)).slice(0, MAX_PROJECTS);
+		return (projects.data?.projects ?? [])
+			.filter(p => !q || p.label.toLowerCase().includes(q))
+			.slice(0, MAX_PROJECTS);
 	}, [projects.data, query]);
 
 	const start = async (project: HubProject) => {
+		if (!projectsReady || startOn === null) return;
 		setStarting(project.path);
 		setNotice(null);
 		try {
-			const r = await startHubSession(project.path);
+			const r = await startHubSession(project.path, startOn);
 			onStarted();
 			setNotice({ tone: "ok", text: startedText(project, r) });
 		} catch (error) {
@@ -814,54 +791,171 @@ function StartSession({ active, onStarted }: { active: boolean; onStarted: () =>
 		}
 	};
 
+	const createAndStart = async () => {
+		if (startOn === null || !parentOk || !validProjectName(folderName)) return;
+		setStarting("new-folder");
+		setNotice(null);
+		try {
+			const path = await createAndStartProject(
+				() => createProject(startOn, parent, folderName, initializeGit),
+				path => startHubSession(path, startOn),
+			);
+			onStarted();
+			setNotice({ tone: "ok", text: `Started a session in ${path}.` });
+		} catch (error) {
+			setNotice({ tone: "bad", text: `Could not create and start: ${errorText(error)}` });
+		} finally {
+			setStarting(null);
+		}
+	};
+
 	return (
-		<Card
-			title="Start a session"
-			description="Most recently used projects first"
-			actions={
-				<SearchInput value={query} onChange={setQuery} placeholder="Search projects" label="Search projects" />
-			}
+		<Modal
+			open={open}
+			title={fleet && startOn !== null ? `Start a session on ${machineName}` : "Start a session"}
+			onClose={onClose}
+			cancelLabel="Close"
 		>
-			<Help summary="What does Start do?">
-				<p>
-					Starts a new omp session in that project on the Mac, in herdr: a new tab called <b>omp</b> in the
-					project's herdr workspace (a workspace named after the project is created when there is none). At the Mac
-					you find it in herdr's sidebar. It uses your default model. Once it shows up above, click{" "}
-					<b>Open &amp; control</b> to talk to it.
-				</p>
-			</Help>
-			<NoticeLine notice={notice} />
-			<QueryView
-				query={projects}
-				skeleton={<TableSkeleton rows={4} />}
-				isEmpty={() => matches.length === 0}
-				empty={<EmptyState title="No matching project" />}
-			>
-				{() => (
-					<ul className="hub-projects">
-						{matches.map(p => (
-							<li key={p.path} className="hub-project">
-								<div className="stack">
-									<span className="hub-project-name truncate">{p.name}</span>
-									<span className="micro truncate">
-										{p.label}
-										{p.last_used ? ` · used ${ago(p.last_used)}` : ""}
-									</span>
-								</div>
+			<div className="sd-stack sd-start">
+				{fleet && header === null && (
+					<div className="sd-field">
+						<span>Machine</span>
+						<div className="sd-row" role="group" aria-label="Start on machine">
+							{fleet.map(m => (
 								<button
+									key={m.id}
 									type="button"
 									className="btn"
 									data-size="sm"
-									disabled={starting !== null}
-									onClick={() => start(p)}
+									data-variant={m.id === startOn ? "primary" : undefined}
+									aria-pressed={m.id === startOn}
+									disabled={!m.ok}
+									title={m.ok ? undefined : `${m.name} is unreachable`}
+									onClick={() => {
+										setPicked(m.id);
+										setParent("");
+									}}
 								>
-									<Play size={13} /> {starting === p.path ? "Starting…" : "Start"}
+									{m.name}
 								</button>
-							</li>
-						))}
-					</ul>
+							))}
+						</div>
+					</div>
 				)}
-			</QueryView>
-		</Card>
+				{startOn === null && <p className="sd-hint">Pick a machine first; its projects show next.</p>}
+				<p className="sd-hint">
+					Opens a new herdr tab called omp in the project's workspace, with your default model.
+				</p>
+				<NoticeLine notice={notice} />
+				{startOn !== null && (
+					<>
+						<SearchInput
+							value={query}
+							onChange={setQuery}
+							placeholder="Search projects"
+							label="Search projects"
+						/>
+						{projects.error ? (
+							<div className="sd-row">
+								<p className="sd-hint" data-tone="bad" role="alert">
+									Could not list the projects: {projects.error.message}
+								</p>
+								<button type="button" className="btn" data-size="sm" onClick={projects.refetch}>
+									Try again
+								</button>
+							</div>
+						) : projects.data === null ? (
+							<TableSkeleton rows={4} />
+						) : matches.length === 0 ? (
+							<EmptyState title="No matching project" />
+						) : (
+							<ul className="hub-projects">
+								{matches.map(p => (
+									<li key={p.path} className="hub-project">
+										<div className="stack">
+											<span className="hub-project-name truncate">{p.name}</span>
+											<span className="micro truncate">
+												{p.label}
+												{p.last_used ? ` · used ${ago(p.last_used)}` : ""}
+											</span>
+										</div>
+										<button
+											type="button"
+											className="btn"
+											data-size="sm"
+											disabled={starting !== null || !projectsReady}
+											onClick={() => void start(p)}
+										>
+											<Play size={13} /> {starting === p.path ? "Starting…" : "Start"}
+										</button>
+									</li>
+								))}
+							</ul>
+						)}
+						<button
+							type="button"
+							className="btn"
+							data-size="sm"
+							data-variant="ghost"
+							aria-expanded={newFolder}
+							onClick={() => setNewFolder(value => !value)}
+						>
+							New folder
+						</button>
+						{newFolder && (
+							<div className="sd-stack">
+								<label className="sd-field">
+									<span>Parent</span>
+									<select className="input" value={parent} onChange={event => setParent(event.target.value)}>
+										<option value="">Choose a parent</option>
+										{parentChoices.map(path => (
+											<option key={path} value={path}>
+												{path}
+											</option>
+										))}
+									</select>
+								</label>
+								{parents.error && (
+									<p className="sd-hint" data-tone="bad" role="alert">
+										{errorText(parents.error)}
+									</p>
+								)}
+								<label className="sd-field">
+									<span>Name</span>
+									<input
+										type="text"
+										className="input"
+										value={folderName}
+										onChange={event => setFolderName(event.target.value)}
+									/>
+								</label>
+								{folderName && !validProjectName(folderName) && (
+									<p className="sd-hint" data-tone="bad" role="alert">
+										Use 1–64 letters, digits, dots, underscores or hyphens; start with a letter or digit.
+									</p>
+								)}
+								<label className="sd-check">
+									<input
+										type="checkbox"
+										checked={initializeGit}
+										onChange={event => setInitializeGit(event.target.checked)}
+									/>{" "}
+									Initialize git
+								</label>
+								<button
+									type="button"
+									className="btn"
+									data-variant="primary"
+									disabled={starting !== null || !parentOk || !validProjectName(folderName)}
+									onClick={() => void createAndStart()}
+								>
+									{starting === "new-folder" ? "Starting…" : "Create and start"}
+								</button>
+							</div>
+						)}
+					</>
+				)}
+			</div>
+		</Modal>
 	);
 }

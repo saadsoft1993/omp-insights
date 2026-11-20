@@ -1,3 +1,8 @@
+import { ALL_MACHINES, concreteMachine, machinePath, useSelectedMachine } from "../app/machine";
+import { MissingMachineNumbers } from "../app/MachineBanner";
+import { fleetQueryView, useFleetQuery } from "../data/fleet-query";
+import { useHubPresent } from "../data/hub-presence";
+import { mergeGain } from "../data/fleet-merge";
 import { useMemo, useState } from "react";
 import { getGainDashboardStats } from "../api";
 import { Chart, type ChartSeries, Legend } from "../charts";
@@ -42,9 +47,29 @@ interface SourceRow extends GainSourceTotals {
 
 export function GainRoute({ active, range }: GainRouteProps) {
 	const [project, setProject] = useState<string | null>(null);
-	const gain = useQuery(["gain", range, project], ({ signal }) => getGainDashboardStats(range, project, signal), {
-		enabled: active,
-	});
+	const hubPresent = useHubPresent();
+	const allMachines = useSelectedMachine() === ALL_MACHINES;
+	const single = useQuery(
+		["gain", range, project],
+		({ signal }) => getGainDashboardStats(range, project, signal, concreteMachine()),
+		{ enabled: active && !allMachines },
+	);
+	const fleet = useFleetQuery(
+		["gain", range, project],
+		async (machine, signal) => {
+			const response = await fetch(machinePath("/api/hub/version", machine), { signal });
+			if (!response.ok) throw new Error(`Machine version: ${response.status}`);
+			const version = (await response.json()) as { home?: string | null };
+			const home = version.home ?? null;
+			const machineProject =
+				home && project && (project === "~" || project.startsWith("~/")) ? home + project.slice(1) : project;
+			const data = await getGainDashboardStats(range, machineProject, signal, machine);
+			return { machine, home, data };
+		},
+		mergeGain,
+		{ enabled: active && allMachines && hubPresent },
+	);
+	const gain = allMachines ? fleetQueryView(single, fleet) : single;
 	const meta = rangeMeta(range);
 	const data = gain.data;
 
@@ -91,6 +116,7 @@ export function GainRoute({ active, range }: GainRouteProps) {
 
 	return (
 		<div className="page">
+			{allMachines && <MissingMachineNumbers machines={fleet.machines} />}
 			<PageHeader
 				title="Gain"
 				description={`Context snapcompact freed by compacting, and tokens it saved by imaging tool results${scope}, in ${meta.windowLabel}.`}

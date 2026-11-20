@@ -1,17 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import type { HubJob, HubQuota, HubQuotaWindow } from "../src/client/data/hub";
+import type { HubQuota, HubQuotaWindow } from "../src/client/data/hub";
 import {
 	accountProblem,
-	gapText,
 	highest,
-	jobOrder,
-	logText,
 	noBackupNotes,
 	quotaHeadline,
 	resetsText,
 	span,
-	statusCounts,
-	statusLabel,
 	windowView,
 } from "../src/client/data/hub-view";
 import { parseHash } from "../src/client/data/useHashRoute";
@@ -27,21 +22,6 @@ function win(over: Partial<HubQuotaWindow> = {}): HubQuotaWindow {
 		observedAt: NOW - 3 * MIN,
 		state: "ok",
 		high: false,
-		...over,
-	};
-}
-
-function job(over: Partial<HubJob> = {}): HubJob {
-	return {
-		label: "com.example.x",
-		file: "com.example.x.plist",
-		readable: true,
-		note: null,
-		schedule: "daily 07:00",
-		status: "ok",
-		exit: "last exit ok",
-		pid: null,
-		lastLogWrite: NOW - 90 * MIN,
 		...over,
 	};
 }
@@ -125,59 +105,6 @@ describe("quota card summary", () => {
 		expect(accountProblem(quota.accounts[1])).toEqual({ label: "Needs login", tone: "bad" });
 		expect(accountProblem(quota.accounts[2])).toEqual({ label: "Rate limited", tone: "warn" });
 		expect(accountProblem(quota.accounts[0])).toBeNull();
-	});
-});
-
-describe("jobs", () => {
-	it("words the statuses: last exit ok, failed with its exit, not loaded", () => {
-		expect(statusLabel(job())).toEqual({ label: "Last exit ok", tone: "ok" });
-		expect(statusLabel(job({ status: "failed", exit: "last exit 78" }))).toEqual({
-			label: "Failed, exit 78",
-			tone: "bad",
-		});
-		expect(statusLabel(job({ status: "not loaded", exit: null })).label).toBe("Not loaded");
-		expect(statusLabel(job({ status: "running", exit: null })).label).toBe("Running");
-		expect(statusLabel(job({ status: "unknown", exit: null })).label).toBe("Unknown");
-	});
-
-	it("calls the log time a last log write, not a last run", () => {
-		expect(logText(job(), NOW)).toBe("last log write 1h 30m ago");
-		expect(logText(job({ lastLogWrite: null }), NOW)).toBe("no log written");
-	});
-
-	it("lists failed first, then unknown, running, ok, not loaded", () => {
-		const jobs = [
-			job({ label: "z-ok" }),
-			job({ label: "a-off", status: "not loaded" }),
-			job({ label: "m-fail", status: "failed" }),
-			job({ label: "b-run", status: "running" }),
-			job({ label: "c-unk", status: "unknown" }),
-		];
-		expect(jobs.sort(jobOrder).map(j => j.label)).toEqual(["m-fail", "c-unk", "b-run", "z-ok", "a-off"]);
-	});
-
-	it("counts statuses for the header", () => {
-		expect(statusCounts([job(), job(), job({ status: "failed" })])).toEqual([
-			{ status: "failed", count: 1 },
-			{ status: "ok", count: 2 },
-		]);
-	});
-
-	it("writes a gap with its length", () => {
-		const start = new Date(2026, 10, 12, 8, 10).getTime();
-		const text = gapText({ start, end: start + 45 * MIN, alerted: true });
-		expect(text).toContain("(45m)");
-		expect(text).toContain("–");
-	});
-
-	it("spans minutes, hours and days", () => {
-		expect([span(30_000), span(59 * MIN), span(61 * MIN), span(600 * MIN), span(72 * 60 * MIN)]).toEqual([
-			"<1m",
-			"59m",
-			"1h 1m",
-			"10h",
-			"3d",
-		]);
 	});
 });
 

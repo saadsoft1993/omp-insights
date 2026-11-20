@@ -29,6 +29,8 @@ export interface MessageStats {
 	ttft: number | null;
 	/** Stop reason */
 	stopReason: StopReason;
+	/** Whether the transcript actually recorded a stop reason. */
+	stopReasonPresent?: boolean;
 	/** Error message if stopReason is error */
 	errorMessage: string | null;
 	/** Token usage */

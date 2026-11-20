@@ -1,0 +1,1111 @@
+{
+  "today": "2026-11-20",
+  "generated": "2026-11-20",
+  "lookback_days": 14,
+  "accounts": [
+    {
+      "key": "alpha",
+      "label": "Alpha",
+      "profile": "alpha",
+      "account_id": "111111111111",
+      "note": "synthetic",
+      "costs": {
+        "monthly": {
+          "2026-01-01": {
+            "Amazon Simple Storage Service": 100,
+            "AWS Lambda": 50,
+            "Tax": 15
+          },
+          "2026-02-01": {
+            "Amazon Simple Storage Service": 100,
+            "AWS Lambda": 50,
+            "Tax": 15
+          },
+          "2026-03-01": {
+            "Amazon Simple Storage Service": 100,
+            "AWS Lambda": 50,
+            "Tax": 15
+          },
+          "2026-04-01": {
+            "Amazon Simple Storage Service": 100,
+            "AWS Lambda": 50,
+            "Tax": 15
+          },
+          "2026-05-01": {
+            "Amazon Simple Storage Service": 100,
+            "AWS Lambda": 50,
+            "Tax": 15
+          },
+          "2026-06-01": {
+            "Amazon Simple Storage Service": 100,
+            "AWS Lambda": 50,
+            "Tax": 15
+          },
+          "2026-07-01": {
+            "Amazon Simple Storage Service": 100,
+            "AWS Lambda": 50,
+            "Tax": 15
+          },
+          "2026-08-01": {
+            "Amazon Simple Storage Service": 100,
+            "AWS Lambda": 50,
+            "Tax": 15
+          },
+          "2026-09-01": {
+            "Amazon Simple Storage Service": 100,
+            "AWS Lambda": 50,
+            "Tax": 15
+          },
+          "2026-10-01": {
+            "Amazon Simple Storage Service": 100,
+            "AWS Lambda": 50,
+            "Tax": 15
+          },
+          "2026-11-01": {
+            "Amazon Simple Storage Service": 40,
+            "AWS Lambda": 20,
+            "Tax": 6
+          }
+        },
+        "daily": {
+          "2026-11-18": {
+            "Amazon Simple Storage Service": 5,
+            "AWS Lambda": 2
+          },
+          "2026-11-17": {
+            "Amazon Simple Storage Service": 5,
+            "AWS Lambda": 2
+          },
+          "2026-11-16": {
+            "Amazon Simple Storage Service": 5,
+            "AWS Lambda": 2
+          },
+          "2026-11-15": {
+            "Amazon Simple Storage Service": 5,
+            "AWS Lambda": 2
+          },
+          "2026-11-14": {
+            "Amazon Simple Storage Service": 5,
+            "AWS Lambda": 2
+          },
+          "2026-11-13": {
+            "Amazon Simple Storage Service": 5,
+            "AWS Lambda": 2
+          },
+          "2026-11-12": {
+            "Amazon Simple Storage Service": 5,
+            "AWS Lambda": 2
+          }
+        },
+        "usage": {
+          "2026-01-01": {
+            "AWS Lambda||Requests": 50
+          },
+          "2026-02-01": {
+            "AWS Lambda||Requests": 50
+          },
+          "2026-03-01": {
+            "AWS Lambda||Requests": 50
+          },
+          "2026-04-01": {
+            "AWS Lambda||Requests": 50
+          },
+          "2026-05-01": {
+            "AWS Lambda||Requests": 50
+          },
+          "2026-06-01": {
+            "AWS Lambda||Requests": 50
+          },
+          "2026-07-01": {
+            "AWS Lambda||Requests": 50
+          },
+          "2026-08-01": {
+            "AWS Lambda||Requests": 50
+          },
+          "2026-09-01": {
+            "AWS Lambda||Requests": 50
+          },
+          "2026-10-01": {
+            "AWS Lambda||Requests": 50
+          },
+          "2026-11-01": {
+            "AWS Lambda||Requests": 20
+          }
+        },
+        "usage_week": {
+          "2026-11-18": {
+            "AWS Lambda||Requests": 2
+          },
+          "2026-11-17": {
+            "AWS Lambda||Requests": 2
+          },
+          "2026-11-16": {
+            "AWS Lambda||Requests": 2
+          },
+          "2026-11-15": {
+            "AWS Lambda||Requests": 2
+          },
+          "2026-11-14": {
+            "AWS Lambda||Requests": 2
+          },
+          "2026-11-13": {
+            "AWS Lambda||Requests": 2
+          },
+          "2026-11-12": {
+            "AWS Lambda||Requests": 2
+          }
+        },
+        "region": {
+          "2026-01-01": {
+            "us-east-1": 165
+          },
+          "2026-02-01": {
+            "us-east-1": 165
+          },
+          "2026-03-01": {
+            "us-east-1": 165
+          },
+          "2026-04-01": {
+            "us-east-1": 165
+          },
+          "2026-05-01": {
+            "us-east-1": 165
+          },
+          "2026-06-01": {
+            "us-east-1": 165
+          },
+          "2026-07-01": {
+            "us-east-1": 165
+          },
+          "2026-08-01": {
+            "us-east-1": 165
+          },
+          "2026-09-01": {
+            "us-east-1": 165
+          },
+          "2026-10-01": {
+            "us-east-1": 165
+          },
+          "2026-11-01": {
+            "us-east-1": 66
+          }
+        },
+        "tags": {
+          "Client": {
+            "2026-01-01": {
+              "North": 100
+            },
+            "2026-02-01": {
+              "North": 100
+            },
+            "2026-03-01": {
+              "North": 100
+            },
+            "2026-04-01": {
+              "North": 100
+            },
+            "2026-05-01": {
+              "North": 100
+            },
+            "2026-06-01": {
+              "North": 100
+            },
+            "2026-07-01": {
+              "North": 100
+            },
+            "2026-08-01": {
+              "North": 100
+            },
+            "2026-09-01": {
+              "North": 100
+            },
+            "2026-10-01": {
+              "North": 100
+            },
+            "2026-11-01": {
+              "North": 40
+            }
+          },
+          "Project": {
+            "2026-01-01": {
+              "North": 100
+            },
+            "2026-02-01": {
+              "North": 100
+            },
+            "2026-03-01": {
+              "North": 100
+            },
+            "2026-04-01": {
+              "North": 100
+            },
+            "2026-05-01": {
+              "North": 100
+            },
+            "2026-06-01": {
+              "North": 100
+            },
+            "2026-07-01": {
+              "North": 100
+            },
+            "2026-08-01": {
+              "North": 100
+            },
+            "2026-09-01": {
+              "North": 100
+            },
+            "2026-10-01": {
+              "North": 100
+            },
+            "2026-11-01": {
+              "North": 40
+            }
+          },
+          "Environment": {
+            "2026-01-01": {
+              "North": 100
+            },
+            "2026-02-01": {
+              "North": 100
+            },
+            "2026-03-01": {
+              "North": 100
+            },
+            "2026-04-01": {
+              "North": 100
+            },
+            "2026-05-01": {
+              "North": 100
+            },
+            "2026-06-01": {
+              "North": 100
+            },
+            "2026-07-01": {
+              "North": 100
+            },
+            "2026-08-01": {
+              "North": 100
+            },
+            "2026-09-01": {
+              "North": 100
+            },
+            "2026-10-01": {
+              "North": 100
+            },
+            "2026-11-01": {
+              "North": 40
+            }
+          }
+        },
+        "tag_service": {
+          "Client": {
+            "2026-01-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-02-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-03-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-04-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-05-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-06-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-07-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-08-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-09-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-10-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-11-01": {
+              "North||Amazon Simple Storage Service": 40,
+              "(untagged)||AWS Lambda": 20,
+              "(untagged)||Tax": 6
+            }
+          },
+          "Project": {
+            "2026-01-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-02-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-03-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-04-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-05-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-06-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-07-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-08-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-09-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-10-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-11-01": {
+              "North||Amazon Simple Storage Service": 40,
+              "(untagged)||AWS Lambda": 20,
+              "(untagged)||Tax": 6
+            }
+          },
+          "Environment": {
+            "2026-01-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-02-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-03-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-04-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-05-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-06-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-07-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-08-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-09-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-10-01": {
+              "North||Amazon Simple Storage Service": 100,
+              "(untagged)||AWS Lambda": 50,
+              "(untagged)||Tax": 15
+            },
+            "2026-11-01": {
+              "North||Amazon Simple Storage Service": 40,
+              "(untagged)||AWS Lambda": 20,
+              "(untagged)||Tax": 6
+            }
+          }
+        },
+        "tags_daily": {
+          "Project": {
+            "2026-11-18": {
+              "North": 5
+            },
+            "2026-11-17": {
+              "North": 5
+            },
+            "2026-11-16": {
+              "North": 5
+            },
+            "2026-11-15": {
+              "North": 5
+            },
+            "2026-11-14": {
+              "North": 5
+            },
+            "2026-11-13": {
+              "North": 5
+            },
+            "2026-11-12": {
+              "North": 5
+            }
+          }
+        },
+        "tag_keys": [
+          "Client",
+          "Project",
+          "Environment"
+        ],
+        "tag_aliases": {
+          "Client": {
+            "north": "North"
+          }
+        },
+        "billed_monthly": {
+          "2026-11-01": 40
+        },
+        "billed_daily": {},
+        "credits_monthly": {
+          "2026-11-01": {
+            "AWS Lambda": -20
+          },
+          "2026-10-01": {
+            "AWS Lambda": -165
+          }
+        },
+        "credits_daily": {},
+        "refunds_monthly": {},
+        "refunds_daily": {},
+        "forecast_rest_of_month": 120,
+        "estimated_days": [],
+        "unknown_record_types": [
+          "SyntheticCharge"
+        ]
+      },
+      "resources": [
+        {
+          "account": "alpha",
+          "status": "dead",
+          "kind": "Disk",
+          "name": "fake-disk-alpha",
+          "id": "disk-alpha",
+          "project": "North",
+          "region": "us-east-1",
+          "monthly": 10,
+          "recoverable": 8,
+          "evidence": "unused",
+          "state": "available"
+        }
+      ],
+      "reservations": [],
+      "credit_grants": [
+        {
+          "description": "Synthetic grant",
+          "remaining": 50,
+          "initial": 600,
+          "end": "2027-12-01",
+          "status": "ENABLED"
+        }
+      ],
+      "credit_grants_error": null,
+      "collected_at": "2026-11-20",
+      "inventory_at": "2026-11-20",
+      "stale": "refresh failed"
+    },
+    {
+      "key": "beta",
+      "label": "Beta",
+      "profile": "beta",
+      "account_id": "222222222222",
+      "note": "synthetic",
+      "costs": {
+        "monthly": {
+          "2026-01-01": {
+            "Amazon Simple Storage Service": 200,
+            "AWS Lambda": 100,
+            "Tax": 30
+          },
+          "2026-02-01": {
+            "Amazon Simple Storage Service": 200,
+            "AWS Lambda": 100,
+            "Tax": 30
+          },
+          "2026-03-01": {
+            "Amazon Simple Storage Service": 200,
+            "AWS Lambda": 100,
+            "Tax": 30
+          },
+          "2026-04-01": {
+            "Amazon Simple Storage Service": 200,
+            "AWS Lambda": 100,
+            "Tax": 30
+          },
+          "2026-05-01": {
+            "Amazon Simple Storage Service": 200,
+            "AWS Lambda": 100,
+            "Tax": 30
+          },
+          "2026-06-01": {
+            "Amazon Simple Storage Service": 200,
+            "AWS Lambda": 100,
+            "Tax": 30
+          },
+          "2026-07-01": {
+            "Amazon Simple Storage Service": 200,
+            "AWS Lambda": 100,
+            "Tax": 30
+          },
+          "2026-08-01": {
+            "Amazon Simple Storage Service": 200,
+            "AWS Lambda": 100,
+            "Tax": 30
+          },
+          "2026-09-01": {
+            "Amazon Simple Storage Service": 200,
+            "AWS Lambda": 100,
+            "Tax": 30
+          },
+          "2026-10-01": {
+            "Amazon Simple Storage Service": 200,
+            "AWS Lambda": 100,
+            "Tax": 30
+          },
+          "2026-11-01": {
+            "Amazon Simple Storage Service": 80,
+            "AWS Lambda": 40,
+            "Tax": 12
+          }
+        },
+        "daily": {
+          "2026-11-18": {
+            "Amazon Simple Storage Service": 10,
+            "AWS Lambda": 4
+          },
+          "2026-11-17": {
+            "Amazon Simple Storage Service": 10,
+            "AWS Lambda": 4
+          },
+          "2026-11-16": {
+            "Amazon Simple Storage Service": 10,
+            "AWS Lambda": 4
+          },
+          "2026-11-15": {
+            "Amazon Simple Storage Service": 10,
+            "AWS Lambda": 4
+          },
+          "2026-11-14": {
+            "Amazon Simple Storage Service": 10,
+            "AWS Lambda": 4
+          },
+          "2026-11-13": {
+            "Amazon Simple Storage Service": 10,
+            "AWS Lambda": 4
+          },
+          "2026-11-12": {
+            "Amazon Simple Storage Service": 10,
+            "AWS Lambda": 4
+          }
+        },
+        "usage": {
+          "2026-01-01": {
+            "AWS Lambda||Requests": 100
+          },
+          "2026-02-01": {
+            "AWS Lambda||Requests": 100
+          },
+          "2026-03-01": {
+            "AWS Lambda||Requests": 100
+          },
+          "2026-04-01": {
+            "AWS Lambda||Requests": 100
+          },
+          "2026-05-01": {
+            "AWS Lambda||Requests": 100
+          },
+          "2026-06-01": {
+            "AWS Lambda||Requests": 100
+          },
+          "2026-07-01": {
+            "AWS Lambda||Requests": 100
+          },
+          "2026-08-01": {
+            "AWS Lambda||Requests": 100
+          },
+          "2026-09-01": {
+            "AWS Lambda||Requests": 100
+          },
+          "2026-10-01": {
+            "AWS Lambda||Requests": 100
+          },
+          "2026-11-01": {
+            "AWS Lambda||Requests": 40
+          }
+        },
+        "usage_week": {
+          "2026-11-18": {
+            "AWS Lambda||Requests": 4
+          },
+          "2026-11-17": {
+            "AWS Lambda||Requests": 4
+          },
+          "2026-11-16": {
+            "AWS Lambda||Requests": 4
+          },
+          "2026-11-15": {
+            "AWS Lambda||Requests": 4
+          },
+          "2026-11-14": {
+            "AWS Lambda||Requests": 4
+          },
+          "2026-11-13": {
+            "AWS Lambda||Requests": 4
+          },
+          "2026-11-12": {
+            "AWS Lambda||Requests": 4
+          }
+        },
+        "region": {
+          "2026-01-01": {
+            "us-east-1": 330
+          },
+          "2026-02-01": {
+            "us-east-1": 330
+          },
+          "2026-03-01": {
+            "us-east-1": 330
+          },
+          "2026-04-01": {
+            "us-east-1": 330
+          },
+          "2026-05-01": {
+            "us-east-1": 330
+          },
+          "2026-06-01": {
+            "us-east-1": 330
+          },
+          "2026-07-01": {
+            "us-east-1": 330
+          },
+          "2026-08-01": {
+            "us-east-1": 330
+          },
+          "2026-09-01": {
+            "us-east-1": 330
+          },
+          "2026-10-01": {
+            "us-east-1": 330
+          },
+          "2026-11-01": {
+            "us-east-1": 132
+          }
+        },
+        "tags": {
+          "Client": {
+            "2026-01-01": {
+              "North": 200
+            },
+            "2026-02-01": {
+              "North": 200
+            },
+            "2026-03-01": {
+              "North": 200
+            },
+            "2026-04-01": {
+              "North": 200
+            },
+            "2026-05-01": {
+              "North": 200
+            },
+            "2026-06-01": {
+              "North": 200
+            },
+            "2026-07-01": {
+              "North": 200
+            },
+            "2026-08-01": {
+              "North": 200
+            },
+            "2026-09-01": {
+              "North": 200
+            },
+            "2026-10-01": {
+              "North": 200
+            },
+            "2026-11-01": {
+              "North": 80
+            }
+          },
+          "Project": {
+            "2026-01-01": {
+              "North": 200
+            },
+            "2026-02-01": {
+              "North": 200
+            },
+            "2026-03-01": {
+              "North": 200
+            },
+            "2026-04-01": {
+              "North": 200
+            },
+            "2026-05-01": {
+              "North": 200
+            },
+            "2026-06-01": {
+              "North": 200
+            },
+            "2026-07-01": {
+              "North": 200
+            },
+            "2026-08-01": {
+              "North": 200
+            },
+            "2026-09-01": {
+              "North": 200
+            },
+            "2026-10-01": {
+              "North": 200
+            },
+            "2026-11-01": {
+              "North": 80
+            }
+          },
+          "Environment": {
+            "2026-01-01": {
+              "North": 200
+            },
+            "2026-02-01": {
+              "North": 200
+            },
+            "2026-03-01": {
+              "North": 200
+            },
+            "2026-04-01": {
+              "North": 200
+            },
+            "2026-05-01": {
+              "North": 200
+            },
+            "2026-06-01": {
+              "North": 200
+            },
+            "2026-07-01": {
+              "North": 200
+            },
+            "2026-08-01": {
+              "North": 200
+            },
+            "2026-09-01": {
+              "North": 200
+            },
+            "2026-10-01": {
+              "North": 200
+            },
+            "2026-11-01": {
+              "North": 80
+            }
+          }
+        },
+        "tag_service": {
+          "Client": {
+            "2026-01-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-02-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-03-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-04-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-05-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-06-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-07-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-08-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-09-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-10-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-11-01": {
+              "North||Amazon Simple Storage Service": 80,
+              "(untagged)||AWS Lambda": 40,
+              "(untagged)||Tax": 12
+            }
+          },
+          "Project": {
+            "2026-01-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-02-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-03-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-04-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-05-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-06-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-07-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-08-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-09-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-10-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-11-01": {
+              "North||Amazon Simple Storage Service": 80,
+              "(untagged)||AWS Lambda": 40,
+              "(untagged)||Tax": 12
+            }
+          },
+          "Environment": {
+            "2026-01-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-02-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-03-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-04-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-05-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-06-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-07-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-08-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-09-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-10-01": {
+              "North||Amazon Simple Storage Service": 200,
+              "(untagged)||AWS Lambda": 100,
+              "(untagged)||Tax": 30
+            },
+            "2026-11-01": {
+              "North||Amazon Simple Storage Service": 80,
+              "(untagged)||AWS Lambda": 40,
+              "(untagged)||Tax": 12
+            }
+          }
+        },
+        "tags_daily": {
+          "Project": {
+            "2026-11-18": {
+              "North": 10
+            },
+            "2026-11-17": {
+              "North": 10
+            },
+            "2026-11-16": {
+              "North": 10
+            },
+            "2026-11-15": {
+              "North": 10
+            },
+            "2026-11-14": {
+              "North": 10
+            },
+            "2026-11-13": {
+              "North": 10
+            },
+            "2026-11-12": {
+              "North": 10
+            }
+          }
+        },
+        "tag_keys": [
+          "Client",
+          "Project",
+          "Environment"
+        ],
+        "tag_aliases": {
+          "Client": {
+            "north": "North"
+          }
+        },
+        "billed_monthly": {
+          "2026-11-01": 80
+        },
+        "billed_daily": {},
+        "credits_monthly": {
+          "2026-11-01": {
+            "AWS Lambda": -40
+          },
+          "2026-10-01": {
+            "AWS Lambda": -330
+          }
+        },
+        "credits_daily": {},
+        "refunds_monthly": {},
+        "refunds_daily": {},
+        "forecast_rest_of_month": 240,
+        "estimated_days": [],
+        "unknown_record_types": []
+      },
+      "resources": [
+        {
+          "account": "beta",
+          "status": "idle",
+          "kind": "Disk",
+          "name": "fake-disk-beta",
+          "id": "disk-beta",
+          "project": "North",
+          "region": "us-east-1",
+          "monthly": 20,
+          "recoverable": 16,
+          "evidence": "unused",
+          "state": "available"
+        }
+      ],
+      "reservations": [],
+      "credit_grants": [
+        {
+          "description": "Synthetic grant",
+          "remaining": 100,
+          "initial": 1200,
+          "end": "2027-12-01",
+          "status": "ENABLED"
+        }
+      ],
+      "credit_grants_error": null,
+      "collected_at": "2026-11-20",
+      "inventory_at": "2026-11-20",
+      "stale": null
+    }
+  ]
+}

@@ -435,6 +435,8 @@ describe("stats scheduled response costs", () => {
 		expect(getOverallStats().totalCost).toBeCloseTo(0.066, 8);
 		// The no-cache estimate prices the cached tokens at each request's input rate: 1.32 peak, 0.66 off-peak.
 		expect(getOverallStats().cacheSavings).toBeCloseTo(1 - 0.066 / 1.98, 8);
+		expect(getOverallStats().noCacheInputCost).toBeCloseTo(1.98, 8);
+		expect(getOverallStats().cachedPromptCost).toBeCloseTo(0.066, 8);
 
 		// Simulate a database predating the no-cache estimate column's backfill.
 		database.run("UPDATE messages SET cost_no_cache_input = NULL");

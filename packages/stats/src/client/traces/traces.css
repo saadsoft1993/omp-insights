@@ -166,6 +166,21 @@
 	color: var(--ink-3);
 }
 
+.traces-gutter-load {
+	flex-shrink: 0;
+	font-size: 10.5px;
+	padding: 0 6px;
+	border: 1px solid var(--line-2);
+	border-radius: var(--r-chip);
+	background: transparent;
+	color: var(--ink-2);
+	cursor: pointer;
+}
+.traces-gutter-load:disabled {
+	cursor: default;
+	opacity: 0.6;
+}
+
 .traces-gutter-lane {
 	position: absolute;
 	font-size: 10.5px;
@@ -302,4 +317,10 @@
 .traces-pre[data-scroll="true"] {
 	max-height: 360px;
 	overflow-y: auto;
+}
+
+/* A track whose spans didn't load: its Try again button carries the reason in its tooltip. */
+.traces-gutter-load[data-failed] {
+	border-color: var(--warn, #d99b31);
+	color: var(--warn, #d99b31);
 }

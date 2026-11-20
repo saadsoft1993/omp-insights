@@ -1,0 +1,18 @@
+.sms-page { display: grid; gap: 16px; }
+.sms-scroll, .sms-dag { overflow-x: auto; }
+.sms-filter { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.sms-filter label { display: grid; gap: 4px; }
+.sms-filter label:has(input[type="checkbox"]) { display: flex; align-items: center; }
+.sms-filter button[aria-pressed="true"] { outline: 2px solid var(--chart-primary); }
+.sms-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%, 460px),1fr)); gap: 16px; }
+.sms-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(240px, 1fr); gap: 10px; overflow-x: auto; align-items: start; }
+.sms-ticket { display: grid; gap: 6px; padding: 10px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px; color: inherit; text-decoration: none; }
+.sms-ticket:hover { border-color: var(--chart-primary); }
+.sms-status { display: flex; flex-wrap: wrap; gap: 12px; }
+.sms-status span { display: flex; gap: 6px; }
+.sms-status-bar { display: flex; width: 100%; height: 28px; overflow: hidden; border-radius: 5px; margin-bottom: 12px; }
+.sms-status-bar span { min-width: 0; }
+.sms-status i { width: 10px; height: 10px; align-self: center; border-radius: 2px; }
+.sms-dag svg { max-width: none; font-size: 11px; fill: currentColor; }
+.sms-page table { width: 100%; text-align: left; }
+.sms-page th, .sms-page td { padding: 6px; }

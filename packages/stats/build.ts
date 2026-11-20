@@ -19,6 +19,18 @@ if (!result.success) {
 	}
 	process.exit(1);
 }
+// A separate same-origin worker keeps parsing untrusted plans off the UI thread.
+const worker = await Bun.build({
+	entrypoints: ["./src/client/routes/plan-markdown-worker.ts"],
+	outdir: "./dist/client",
+	conditions: ["worker"],
+	minify: true,
+	naming: "plan-markdown-worker.js",
+});
+if (!worker.success) {
+	for (const message of worker.logs) console.error(message);
+	process.exit(1);
+}
 
 // theme.js applies the persisted theme before first paint (no flash). It is a file, not an inline
 // script, so the page works under a strict Content-Security-Policy (script-src 'self').
@@ -65,7 +77,8 @@ for (const file of ["manifest.webmanifest", "icon-192.png", "icon-512.png", "app
 // build.json tells the hub which UI build it serves (shown by /api/hub/version). The id is a hash of the
 // bundle, so it changes exactly when the shipped code does.
 const hasher = new Bun.CryptoHasher("sha256");
-for (const file of ["index.js", "index.css"]) hasher.update(await Bun.file(`./dist/client/${file}`).bytes());
+for (const file of ["index.js", "index.css", "plan-markdown-worker.js"])
+	hasher.update(await Bun.file(`./dist/client/${file}`).bytes());
 await Bun.write(
 	"./dist/client/build.json",
 	JSON.stringify({ buildId: hasher.digest("hex").slice(0, 12), builtAt: new Date().toISOString() }),

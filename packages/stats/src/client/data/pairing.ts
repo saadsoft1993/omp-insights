@@ -43,6 +43,13 @@ export function useAutoPair(): boolean {
 	return useSyncExternalStore(subscribe, () => autoPair);
 }
 
+/** Reset pairing state for isolated tests. */
+export function resetPairingForTests(): void {
+	unpaired = false;
+	autoPair = false;
+	for (const listener of listeners) listener();
+}
+
 let pairingError: string | null = null;
 
 /** Message of the last failed pairing attempt, shown on the Pair screen (never reloads the page). */

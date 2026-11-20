@@ -1,0 +1,111 @@
+/* Machines page (prototype: docs/mockups/omp-tables-redesign, "Machines"). */
+.mc-page .std-mobile-sort {
+	display: none !important;
+}
+.mc-page .table--std thead th {
+	border-top: 1px solid var(--line-1);
+}
+.mc-scope-note,
+.mc-stale-note {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12.5px;
+	color: var(--ink-3);
+	margin-top: -6px;
+}
+.mc-scope-note b {
+	color: var(--ink-2);
+	font-weight: 550;
+}
+.mc-stale-note {
+	color: var(--warn);
+}
+.mc-name {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+}
+.mc-text {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+.mc-main {
+	font-weight: 500;
+	color: var(--ink-1);
+	line-height: 18px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.mc-sub,
+.mc-meta {
+	font-size: 12px;
+	color: var(--ink-3);
+	line-height: 17px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.mc-meta {
+	display: none;
+}
+.mc-dim {
+	color: var(--ink-3);
+	font-family: var(--font-sans);
+}
+.mc-warn {
+	color: var(--warn);
+}
+.mc-current {
+	font-size: 12.5px;
+	color: var(--ink-3);
+}
+.mc-page .table--std td[data-kind="date"] time {
+	color: inherit;
+}
+
+@container (max-width: 600px) {
+	.mc-page .table--std tbody tr:not(.std-group):not(.std-detail) {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 4px 12px;
+		padding: 12px 16px;
+	}
+	.mc-page .table--std tbody td {
+		display: none;
+		height: auto;
+		padding: 0;
+	}
+	.mc-page .table--std tbody td:first-child {
+		display: block;
+		grid-row: 1 / span 2;
+	}
+	.mc-page .table--std tbody td[data-kind="status"],
+	.mc-page .table--std tbody td[data-kind="actions"] {
+		display: block;
+		text-align: right;
+	}
+	.mc-sub {
+		display: none;
+	}
+	.mc-meta {
+		display: block;
+	}
+	.mc-meta .mono {
+		font-family: var(--font-mono);
+	}
+	.mc-select {
+		height: auto;
+		padding: 0;
+		border: 0;
+		background: none !important;
+		font-size: 12.5px;
+		color: var(--ink-2);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+}

@@ -1,0 +1,3 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`the default table retains its Models markup 1`] = `"<div class="table-wrap"><table data-dense="false" class="table"><thead><tr><th data-sortable="false" data-align="left">Name</th></tr></thead><tbody><tr data-selected="false" data-clickable="false"><td data-wrap="false" data-align="left">Opus</td></tr></tbody></table></div>"`;

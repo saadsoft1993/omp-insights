@@ -46,6 +46,9 @@
     "@oh-my-pi/pi-catalog": "catalog:",
     "@oh-my-pi/pi-utils": "catalog:",
     "lucide-react": "catalog:",
+    "mdast-util-from-markdown": "2.0.2",
+    "mdast-util-gfm": "3.1.0",
+    "micromark-extension-gfm": "3.0.0",
     "react": "catalog:",
     "react-dom": "catalog:",
     "uqr": "0.1.3"

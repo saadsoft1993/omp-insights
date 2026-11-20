@@ -1,0 +1,206 @@
+.account-flow-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 16px;
+	background: rgb(0 0 0 / 55%);
+}
+.account-flow {
+	width: min(480px, 100%);
+	max-height: min(85vh, 760px);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	border: 1px solid var(--line-2);
+	border-radius: var(--r-panel, 12px);
+	background: var(--card);
+	color: var(--ink-1);
+	box-shadow: var(--shadow-3);
+}
+.account-flow-wide {
+	width: min(720px, 100%);
+}
+.account-flow header,
+.account-flow footer {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+	padding: 14px 18px;
+}
+.account-flow header {
+	justify-content: space-between;
+}
+.account-flow h2 {
+	margin: 0;
+	font-size: 15px;
+}
+.account-flow h3 {
+	font-size: 12px;
+	color: var(--ink-3);
+	margin: 8px 0;
+}
+.account-flow-body {
+	padding: 4px 18px 18px;
+	min-height: 0;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	color: var(--ink-2);
+}
+.account-flow-picker {
+	overflow: hidden;
+}
+.account-flow-provider-list {
+	min-height: 0;
+	overflow: auto;
+}
+.account-flow-picker > input {
+	flex-shrink: 0;
+}
+.account-flow-body p {
+	margin: 0;
+}
+.account-flow footer {
+	border-top: 1px solid var(--line-1);
+	justify-content: flex-end;
+}
+.account-flow button,
+.account-flow input:not([type="checkbox"]):not([type="radio"]) {
+	min-height: 34px;
+	padding: 7px 10px;
+	color: var(--ink-1);
+	background: var(--card);
+	border: 1px solid var(--line-2);
+	border-radius: var(--r-control, 6px);
+	font: inherit;
+}
+.account-flow button {
+	cursor: pointer;
+}
+.account-flow button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+.account-flow input:not([type="checkbox"]):not([type="radio"]) {
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}
+.account-flow label {
+	display: block;
+}
+.account-flow label input:not([type="checkbox"]):not([type="radio"]) {
+	margin-top: 8px;
+}
+.account-flow-input-wrap {
+	position: relative;
+	min-width: 0;
+}
+.account-flow .account-flow-input-wrap:has(.account-flow-toggle) input {
+	padding-right: 60px;
+}
+.account-flow .account-flow-toggle {
+	position: absolute;
+	right: 4px;
+	top: 50%;
+	transform: translateY(-50%);
+	min-height: 26px;
+	padding: 2px 6px;
+	border: 0;
+	background: transparent;
+	color: var(--ink-3);
+	font-size: 12px;
+}
+.account-flow .account-flow-cancel {
+	margin-right: auto;
+	border: 0;
+	background: transparent;
+	color: var(--ink-2);
+	padding-left: 0;
+}
+.account-flow .account-flow-primary {
+	background: var(--ink-1);
+	color: var(--ink-inverse);
+	border-color: transparent;
+}
+.account-flow .account-flow-time {
+	color: var(--ink-3);
+	font-size: 12px;
+}
+.account-flow a {
+	color: var(--accent-a);
+	overflow-wrap: anywhere;
+}
+.account-flow small {
+	color: var(--ink-3);
+}
+.account-flow ol {
+	display: grid;
+	gap: 16px;
+	padding-left: 24px;
+	margin: 0;
+}
+.account-flow ol li {
+	padding-left: 4px;
+}
+.account-flow-tiles {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 8px;
+}
+.account-flow-tiles button {
+	display: flex;
+	flex-direction: column;
+	text-align: left;
+	gap: 4px;
+}
+.account-flow-provider {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	width: 100%;
+	text-align: left;
+}
+.account-flow-provider span {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+.account-flow-progress {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	font-size: 12px;
+}
+.account-flow-code {
+	display: inline-block;
+	font: 600 26px var(--font-mono);
+	letter-spacing: 0.12em;
+	padding: 10px;
+	overflow-wrap: anywhere;
+}
+.account-flow-warning {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font: inherit;
+	margin: 0;
+}
+.account-flow-error {
+	padding: 10px;
+	border-radius: 6px;
+	background: var(--bad-soft);
+	color: var(--ink-1);
+}
+@media (max-width: 480px) {
+	.account-flow-tiles {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+	.account-flow-provider {
+		flex-wrap: wrap;
+	}
+}

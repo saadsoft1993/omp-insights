@@ -32,9 +32,9 @@ const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const NOW = Date.UTC(2026, 10, 7, 14, 30);
 const SESSIONS = "/sessions";
-const ROOT = `${SESSIONS}/-projects-acme-shop/2026-11-07T08-43-59-892Z_01a1b52d.jsonl`;
-const SUBAGENT = `${SESSIONS}/-projects-acme-shop/2026-11-07T08-43-59-892Z_01a1b52d/Reviewer.jsonl`;
-const OTHER = `${SESSIONS}/-projects-other-app/2026-11-07T12-00-00-000Z_02b2.jsonl`;
+const ROOT = `${SESSIONS}/-projects-acme-products-sms/2026-11-07T08-43-59-892Z_01a1b52d.jsonl`;
+const SUBAGENT = `${SESSIONS}/-projects-acme-products-sms/2026-11-07T08-43-59-892Z_01a1b52d/Reviewer.jsonl`;
+const OTHER = `${SESSIONS}/-projects-client/2026-11-07T12-00-00-000Z_02b2.jsonl`;
 
 function quota(usedFraction: number | null): AccountQuotaWindow {
 	return {
@@ -108,9 +108,9 @@ function snapshot(
 		rows,
 		activity: options.activity ?? [],
 		accounts: options.accounts ?? [PERSONAL, TEAM],
-		lastNoAccount: new Map([["gateway", NOW - 3 * 60 * MINUTE]]),
+		lastNoAccount: new Map([["workspace", NOW - 3 * 60 * MINUTE]]),
 		gateways: options.gateways ?? new Map(),
-		metadata: new Map([[ROOT, { title: "Fix checkout report", cwd: "/Users/me/projects/acme-shop" }]]),
+		metadata: new Map([[ROOT, { title: "Fix enrolment report", cwd: "/Users/me/projects/acme-products/sms" }]]),
 		sessionsDir: SESSIONS,
 		nowMs: NOW,
 	});
@@ -120,8 +120,8 @@ describe("buildLiveTraffic", () => {
 	it("counts a subagent transcript as its parent session", () => {
 		const live = snapshot([row(ROOT, 30 * SECOND, 3), row(SUBAGENT, 20 * SECOND, 6), row(OTHER, 10 * SECOND, 1)]);
 		expect(live.sessions.map(s => [s.id, s.name, s.project, s.rpm])).toEqual([
-			[OTHER, "other-app", "other-app", 1],
-			[ROOT, "Fix checkout report", "acme-shop", 2],
+			[OTHER, "client", "client", 1],
+			[ROOT, "Fix enrolment report", "sms", 2],
 		]);
 		expect(live.sessions.find(s => s.id === ROOT)?.started).toBe(Date.UTC(2026, 10, 7, 8, 43, 59, 892));
 		// Credentials 3 and 6 are one account: one line from the session, carrying both requests.
@@ -188,14 +188,14 @@ describe("buildLiveTraffic", () => {
 
 	it("names gateways after their models and shows configured ones while idle", () => {
 		const gateways = new Map<string, GatewayInfo>([
-			["gateway", { name: "Team Gateway", host: "llm.example.com" }],
+			["workspace", { name: "Example Gateway Coding", host: "llm.workspace.com" }],
 			["idle-gw", { name: "Idle Model", host: null }],
 		]);
-		const live = snapshot([row(ROOT, 10 * SECOND, null, "gateway")], { gateways });
-		expect(live.targets.find(t => t.key === "gateway/none")).toMatchObject({
+		const live = snapshot([row(ROOT, 10 * SECOND, null, "workspace")], { gateways });
+		expect(live.targets.find(t => t.key === "workspace/none")).toMatchObject({
 			kind: "gateway",
-			label: "Team Gateway",
-			meta: "API-key gateway · llm.example.com",
+			label: "Example Gateway Coding",
+			meta: "API-key gateway · llm.workspace.com",
 			state: "active",
 			rpm: 1,
 		});
@@ -223,6 +223,7 @@ describe("live state rules", () => {
 	it("maps only blocks to rate_limited and keeps needs_login", () => {
 		expect(liveAccountState({ status: "blocked" }, 5)).toBe("rate_limited");
 		expect(liveAccountState({ status: "needs_login" }, 5)).toBe("needs_login");
+		expect(liveAccountState({ status: "removed" }, 5)).toBe("removed");
 		expect(liveAccountState({ status: "active" }, 1)).toBe("active");
 		expect(liveAccountState({ status: "idle" }, 0)).toBe("quiet");
 	});
@@ -234,7 +235,7 @@ describe("live state rules", () => {
 	});
 
 	it("shortens omp's session folder names", () => {
-		expect(projectLabel("-projects-acme-shop")).toBe("acme-shop");
+		expect(projectLabel("-projects-acme-products-sms")).toBe("acme-products-sms");
 		expect(projectLabel("--private-tmp--")).toBe("private-tmp");
 	});
 });
@@ -247,12 +248,12 @@ describe("loadGateways", () => {
 			file,
 			[
 				"providers:",
-				"  gateway:",
-				"    baseUrl: https://llm.example.com/v1",
+				"  workspace:",
+				"    baseUrl: https://llm.workspace.com/v1",
 				"    apiKey: sk-secret",
 				"    models:",
-				"      - id: team-gateway-coding",
-				"        name: Team Gateway",
+				"      - id: gateway-coding",
+				"        name: Example Gateway Coding",
 				"  bare:",
 				"    models:",
 				"      - id: plain-model",
@@ -261,7 +262,7 @@ describe("loadGateways", () => {
 		);
 		const gateways = loadGateways(file);
 		expect(Object.fromEntries(gateways)).toEqual({
-			gateway: { name: "Team Gateway", host: "llm.example.com" },
+			workspace: { name: "Example Gateway Coding", host: "llm.workspace.com" },
 			bare: { name: "plain-model", host: null },
 		});
 		expect(JSON.stringify(Object.fromEntries(gateways))).not.toContain("sk-secret");
@@ -561,7 +562,7 @@ describe("live subagents", () => {
 	it("keeps a session working while its subagents run after its own turn ended", () => {
 		const live = snapshot(
 			[
-				// The acme-shop session's own last request was 4 minutes ago; another session sent one 2 minutes ago.
+				// The sms session's own last request was 4 minutes ago; another session sent one 2 minutes ago.
 				row(ROOT, 4 * MINUTE, 3),
 				row(OTHER, 2 * MINUTE, 3),
 			],

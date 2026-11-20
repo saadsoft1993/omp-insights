@@ -1,0 +1,178 @@
+{
+ "accounts": [
+  {
+   "key": "anthropic/email:team@example.com|org:648daba0-2fef-4654-b922-13353a2e7536",
+   "provider": "anthropic",
+   "label": "team@example.com",
+   "email": "team@example.com",
+   "orgId": "648daba0-2fef-4654-b922-13353a2e7536",
+   "credentialType": "oauth",
+   "credentialIds": [
+    1
+   ],
+   "status": "active",
+   "disabledCause": null,
+   "blocks": [],
+   "requests": 6047,
+   "failedRequests": 2,
+   "totalTokens": 2360946691,
+   "totalCost": 625.8303606000001,
+   "unpricedRequests": 0,
+   "lastUsed": 1794939611514,
+   "requestShare": 1,
+   "tokenShare": 1,
+   "quotas": [
+    {
+     "limitId": "anthropic:5h",
+     "label": "Claude 5 Hour",
+     "windowLabel": "5 Hour",
+     "usedFraction": 0.1,
+     "status": "ok",
+     "resetsAt": 1794963600977,
+     "recordedAt": 1794948301110
+    },
+    {
+     "limitId": "anthropic:7d",
+     "label": "Claude 7 Day",
+     "windowLabel": "7 Day",
+     "usedFraction": 0.61,
+     "status": "ok",
+     "resetsAt": 1795370400978,
+     "recordedAt": 1794948301110
+    },
+    {
+     "limitId": "anthropic:7d:fable",
+     "label": "Claude 7 Day (Fable)",
+     "windowLabel": "7 Day",
+     "usedFraction": 0.22,
+     "status": "ok",
+     "resetsAt": 1795370399978,
+     "recordedAt": 1794948301110
+    }
+   ],
+   "recentRequests": 0,
+   "recentShare": 0,
+   "servingNow": false,
+   "servedLatestNewSession": false
+  },
+  {
+   "key": "anthropic/email:ada@example.com|org:d34bdee7-913c-4861-a7d3-88049174bb5f",
+   "provider": "anthropic",
+   "label": "ada@example.com",
+   "email": "ada@example.com",
+   "orgId": "d34bdee7-913c-4861-a7d3-88049174bb5f",
+   "credentialType": "oauth",
+   "credentialIds": [
+    3,
+    6
+   ],
+   "status": "idle",
+   "disabledCause": null,
+   "blocks": [],
+   "requests": 0,
+   "failedRequests": 0,
+   "totalTokens": 0,
+   "totalCost": 0,
+   "unpricedRequests": 0,
+   "lastUsed": 1794765403333,
+   "requestShare": 0,
+   "tokenShare": 0,
+   "quotas": [
+    {
+     "limitId": "anthropic:7d",
+     "label": "Claude 7 Day",
+     "windowLabel": "7 Day",
+     "usedFraction": 0.32,
+     "status": "ok",
+     "resetsAt": 1795229999788,
+     "recordedAt": 1794948361955
+    },
+    {
+     "limitId": "anthropic:7d:fable",
+     "label": "Claude 7 Day (Fable)",
+     "windowLabel": "7 Day",
+     "usedFraction": 0.01,
+     "status": "ok",
+     "resetsAt": 1795229999788,
+     "recordedAt": 1794948361955
+    }
+   ],
+   "recentRequests": 0,
+   "recentShare": 0,
+   "servingNow": false,
+   "servedLatestNewSession": false
+  },
+  {
+   "key": "openai-codex/email:ada@example.com|org:51d26abb-8d2b-4337-b4dc-4c42a5327021",
+   "provider": "openai-codex",
+   "label": "ada@example.com",
+   "email": "ada@example.com",
+   "orgId": "51d26abb-8d2b-4337-b4dc-4c42a5327021",
+   "credentialType": "oauth",
+   "credentialIds": [
+    2
+   ],
+   "status": "active",
+   "disabledCause": null,
+   "blocks": [],
+   "requests": 12443,
+   "failedRequests": 25,
+   "totalTokens": 1910734979,
+   "totalCost": 397.56801740000003,
+   "unpricedRequests": 0,
+   "lastUsed": 1794939604817,
+   "requestShare": 1,
+   "tokenShare": 1,
+   "quotas": [
+    {
+     "limitId": "openai-codex:primary",
+     "label": "7 days",
+     "windowLabel": "7 days",
+     "usedFraction": 0.25,
+     "status": "ok",
+     "resetsAt": 1795505345000,
+     "recordedAt": 1794948343913
+    }
+   ],
+   "recentRequests": 0,
+   "recentShare": 0,
+   "servingNow": false,
+   "servedLatestNewSession": false
+  }
+ ],
+ "unattributed": [
+  {
+   "provider": "anthropic",
+   "requests": 1376,
+   "failedRequests": 0,
+   "totalTokens": 20581773,
+   "totalCost": 12.0723416,
+   "unpricedRequests": 0,
+   "lastUsed": 1794939481435
+  },
+  {
+   "provider": "openai-codex",
+   "requests": 533,
+   "failedRequests": 2,
+   "totalTokens": 90049526,
+   "totalCost": 15.082819200000001,
+   "unpricedRequests": 0,
+   "lastUsed": 1794939619853
+  }
+ ],
+ "providerTotals": [
+  {
+   "provider": "openai-codex",
+   "requests": 12976,
+   "accountRequests": 12443,
+   "unattributedRequests": 533
+  },
+  {
+   "provider": "anthropic",
+   "requests": 7423,
+   "accountRequests": 6047,
+   "unattributedRequests": 1376
+  }
+ ],
+ "routing": []
+}

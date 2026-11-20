@@ -1,0 +1,62 @@
+{
+  "machine": "mini",
+  "providers": [
+    {
+      "provider": "openai-codex",
+      "label": "ChatGPT Plus/Pro (Codex Subscription)",
+      "style": "device",
+      "accounts": [
+        {
+          "credentialId": 1,
+          "identity": "ada@example.com",
+          "email": "ada@example.com",
+          "accountId": "51d26abb-8d2b-4337-b4dc-4c42a5327021",
+          "orgId": "51d26abb-8d2b-4337-b4dc-4c42a5327021",
+          "type": "oauth",
+          "expiresAt": 1795006929806,
+          "label": "Personal",
+          "ok": true,
+          "managed": false,
+          "priority": 0,
+          "policyMatched": false
+        }
+      ]
+    },
+    {
+      "provider": "anthropic",
+      "label": "Anthropic (Claude Pro/Max)",
+      "style": "paste",
+      "accounts": [
+        {
+          "credentialId": 2,
+          "identity": "team@example.com",
+          "email": "team@example.com",
+          "accountId": "b488f455-d4fa-4651-83f4-18e1532b0c80",
+          "orgId": "648daba0-2fef-4654-b922-13353a2e7536",
+          "type": "oauth",
+          "expiresAt": 1794962338528,
+          "label": "Work account",
+          "ok": true,
+          "managed": false,
+          "priority": 20,
+          "policyMatched": true
+        },
+        {
+          "credentialId": 3,
+          "identity": "ada@example.com",
+          "email": "ada@example.com",
+          "accountId": "9cc45cad-5c97-4703-9096-1e3f4b8132de",
+          "orgId": "d34bdee7-913c-4861-a7d3-88049174bb5f",
+          "type": "oauth",
+          "expiresAt": 1794171576913,
+          "label": "Personal",
+          "ok": true,
+          "managed": true,
+          "priority": 10,
+          "policyMatched": true
+        }
+      ]
+    }
+  ],
+  "login": null
+}

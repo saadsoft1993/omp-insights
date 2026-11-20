@@ -12,6 +12,11 @@
 ### Changed
 
 - The session watcher now syncs a written transcript within 2 seconds even while sessions keep writing; before, every new write pushed the sync back.
+## [18.22.1] - 2026-11-17
+
+### Fixed
+
+- Fixed the Gain tab undercounting savings for sessions that use snapcompact context compaction, including backfilling recent compaction history after upgrading.
 
 ## [18.20.1] - 2026-11-14
 
